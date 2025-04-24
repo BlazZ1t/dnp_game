@@ -1,10 +1,15 @@
 import socket
 import json
 import threading
+import time
 
 # Server address (host, port)
 SERVER_ADDR = ('127.0.0.1', 9999)
 BUFFER_SIZE = 65536
+
+# Lua interconnection (local)
+LUA_INCOMING_ADDR = ('127.0.0.1', 9000)
+LUA_OUTCOMING_ADDR = ('127.0.0.1', 9001)
 
 # Predefined commands with their required params
 COMMANDS = [
@@ -18,61 +23,114 @@ COMMANDS = [
     {"name": "Custom JSON", "action": None,         "params": None},
 ]
 
-def listen(sock, player_id):
-    """
-    Background thread: receive messages from server,
-    auto-reply to 'ping' with 'pong', ignore printing pings.
-    """
+def handle_lua_client(conn, server_sock, player_id):
     while True:
         try:
-            data, _ = sock.recvfrom(BUFFER_SIZE)
-            msg = json.loads(data.decode('utf-8'))
-        except Exception:
-            continue
+            data = conn.recv(4096).decode()
+            if not data:
+                break
+            msg = json.loads(data)
+            msg['player_id'] = player_id
+            server_sock.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
+        except Exception as e:
+            print('[Lua Bridge] Error: ', e)
+            break
+    conn.close()
 
-        action = msg.get('action')
-        # auto-reply to ping silently
-        if action == 'ping':
-            pong = {'action': 'pong', 'player_id': player_id}
-            sock.sendto(json.dumps(pong).encode('utf-8'), SERVER_ADDR)
-            continue
+def start_lua_bridge(server_sock):
+    lua_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    lua_sock.bind(LUA_INCOMING_ADDR)
 
-        # print all other messages
-        print("\n<<", json.dumps(msg, indent=2), "\n")
+    print(f'[Lua Bridge] Listening for lua on {LUA_OUTCOMING_ADDR[1]}')
+    def lua_listener():
+        nonlocal player_id
+        while True:
+            try:
+                data, addr = lua_sock.recvfrom(BUFFER_SIZE)
+                msg = json.loads(data.decode())
+                if not player_id and 'player_id' in msg:
+                    player_id = msg['player_id']
+                    print(f'[Lua Bridge] Gor player_id: {player_id}')
+                    server_sock.sendto(json.dumps({
+                        'action': 'join_room',
+                        'player_id': player_id
+                    }).encode('utf-8'), SERVER_ADDR)
+                if player_id:
+                    msg['player_id'] = player_id
+                    server_sock.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
+            except Exception as e:
+                print('[Listener Error] ', e)
+    
+    player_id = None
+    threading.Thread(target=lua_listener, daemon=True).start()
+    while not player_id:
+        time.sleep(0.1)
+    return player_id
 
-def build_message(cmd, player_id):
-    """
-    Build a JSON message dict based on the selected command.
-    For Custom JSON, prompts raw JSON input.
-    """
-    if cmd["action"] is None:
-        raw = input("Enter full JSON: ").strip()
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            print("Invalid JSON.")
-            return None
 
-    msg = {"action": cmd["action"], "player_id": player_id}
+# WILL BE DONE IN LUA
+# def build_message(cmd, player_id):
+#     """
+#     Build a JSON message dict based on the selected command.
+#     For Custom JSON, prompts raw JSON input.
+#     """
+#     if cmd["action"] is None:
+#         raw = input("Enter full JSON: ").strip()
+#         try:
+#             return json.loads(raw)
+#         except json.JSONDecodeError:
+#             print("Invalid JSON.")
+#             return None
 
-    # gather additional params if needed
-    if cmd["params"]:
-        if cmd["action"] == "move":
-            # ask for x, y, direction
-            x = input("  x = ").strip()
-            y = input("  y = ").strip()
-            dir_ = input("  direction (up/down/left/right) = ").strip()
-            # convert to numbers if possible
-            msg["position"] = {
-                "x": int(x) if x.isdigit() else float(x),
-                "y": int(y) if y.isdigit() else float(y)
-            }
-            msg["direction"] = dir_
-        elif cmd["action"] == "chat":
-            text = input("  message = ").strip()
-            msg["message"] = text
+#     msg = {"action": cmd["action"], "player_id": player_id}
 
-    return msg
+#     # gather additional params if needed
+#     if cmd["params"]:
+#         if cmd["action"] == "move":
+#             # ask for x, y, direction
+#             x = input("  x = ").strip()
+#             y = input("  y = ").strip()
+#             dir_ = input("  direction (up/down/left/right) = ").strip()
+#             # convert to numbers if possible
+#             msg["position"] = {
+#                 "x": int(x) if x.isdigit() else float(x),
+#                 "y": int(y) if y.isdigit() else float(y)
+#             }
+#             msg["direction"] = dir_
+#         elif cmd["action"] == "chat":
+#             text = input("  message = ").strip()
+#             msg["message"] = text
+
+#     return msg
+
+def start_server_listener(server_sock, player_id):
+
+    def listen():
+        """
+        Background thread: receive messages from server,
+        auto-reply to 'ping' with 'pong', ignore printing pings.
+        """
+        while True:
+            try:
+                data, _ = server_sock.recvfrom(BUFFER_SIZE)
+                msg = json.loads(data.decode('utf-8'))
+
+                action = msg.get('action')
+                # auto-reply to ping silently
+                if action == 'ping':
+                    pong = {'action': 'pong', 'player_id': player_id}
+                    server_sock.sendto(json.dumps(pong).encode('utf-8'), SERVER_ADDR)
+                    continue
+
+                udp_to_lua = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                udp_to_lua.sendto(json.dumps(msg).encode('utf-8'), LUA_OUTCOMING_ADDR)
+
+                # print all other messages
+                print("\n<<", json.dumps(msg, indent=2), "\n")
+            except Exception as e:
+                print('[Listener error] ', e)
+
+    threading.Thread(target=listen, daemon=True).start()
 
 def main():
     # set up UDP socket
@@ -80,32 +138,36 @@ def main():
     sock.settimeout(1.0)
 
     # get player ID
-    player_id = input("Enter your player_id: ").strip()
-
-    # start listener thread
-    threading.Thread(target=listen, args=(sock, player_id), daemon=True).start()
-
-    # show available commands
-    print("\n=== Commands ===")
-    for i, c in enumerate(COMMANDS, 1):
-        print(f"  {i}. {c['name']}")
-    print("================\n")
-
-    # command loop
+    player_id = start_lua_bridge(sock)
+    start_server_listener(sock, player_id)
+    print(f"[Client] Running for player_id: {player_id}")
     while True:
-        choice = input("Choose command number (or 'q' to quit): ").strip()
-        if choice.lower() in ('q', 'quit', 'exit'):
-            break
-        if not choice.isdigit() or not (1 <= int(choice) <= len(COMMANDS)):
-            print("Invalid choice, try again.")
-            continue
+        time.sleep(1)
 
-        cmd = COMMANDS[int(choice) - 1]
-        msg = build_message(cmd, player_id)
-        if msg:
-            sock.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
+    # # start listener thread
+    # threading.Thread(target=listen, args=(sock, player_id), daemon=True).start()
 
-    sock.close()
+    # # show available commands
+    # print("\n=== Commands ===")
+    # for i, c in enumerate(COMMANDS, 1):
+    #     print(f"  {i}. {c['name']}")
+    # print("================\n")
+
+    # # command loop
+    # while True:
+    #     choice = input("Choose command number (or 'q' to quit): ").strip()
+    #     if choice.lower() in ('q', 'quit', 'exit'):
+    #         break
+    #     if not choice.isdigit() or not (1 <= int(choice) <= len(COMMANDS)):
+    #         print("Invalid choice, try again.")
+    #         continue
+
+    #     cmd = COMMANDS[int(choice) - 1]
+    #     msg = build_message(cmd, player_id)
+    #     if msg:
+    #         sock.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
+
+    # sock.close()
 
 if __name__ == "__main__":
     main()
