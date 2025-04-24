@@ -1,1 +1,1 @@
-THIS IS A DNP PROJECT WITH THE BEST GAME EVER CREATED
+Add server and client(just for tests)
