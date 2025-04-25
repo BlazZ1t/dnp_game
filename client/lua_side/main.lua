@@ -2,6 +2,7 @@ AnimEight = require('lib.anim8')
 Camera = require('lib.camera')
 local Player = require('entities.player')
 local socket = require('socket')
+local utf8 = require('utf8')
 local udp
 local gameState = {}
 
@@ -17,7 +18,7 @@ function love.load()
     udp = socket.udp()
     udp:settimeout(0)
     udp:setpeername("127.0.0.1", 9000)
-    -- os.execute("python ../python_side/client.py")
+    os.execute("start ../python_side/client.py")
 
     love.window.setMode(0, 0)
     love.graphics.setDefaultFilter("nearest", "nearest")
@@ -63,5 +64,16 @@ function love.draw()
     if gameState.current == 'login' then
         love.graphics.print('Enter your Player ID', 100, 100)
         love.graphics.print(gameState.playerIdInput, 100, 300)
+    end
+end
+
+function love.quit()
+    if udp then
+        local quitMsg = {
+            quit = true
+        }
+        local json = require("lib.dkjson")
+        local message = json.encode(quitMsg)
+        udp:send(message)
     end
 end

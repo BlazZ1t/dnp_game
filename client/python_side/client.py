@@ -11,6 +11,9 @@ BUFFER_SIZE = 65536
 LUA_INCOMING_ADDR = ('127.0.0.1', 9000)
 LUA_OUTCOMING_ADDR = ('127.0.0.1', 9001)
 
+#Shutdown all threads and the python script when the lua game quits
+shutdown = threading.Event()
+
 # Predefined commands with their required params
 COMMANDS = [
     {"name": "Join Room",   "action": "join_room",  "params": []},
@@ -23,20 +26,6 @@ COMMANDS = [
     {"name": "Custom JSON", "action": None,         "params": None},
 ]
 
-def handle_lua_client(conn, server_sock, player_id):
-    while True:
-        try:
-            data = conn.recv(4096).decode()
-            if not data:
-                break
-            msg = json.loads(data)
-            msg['player_id'] = player_id
-            server_sock.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
-        except Exception as e:
-            print('[Lua Bridge] Error: ', e)
-            break
-    conn.close()
-
 def start_lua_bridge(server_sock):
     lua_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     lua_sock.bind(LUA_INCOMING_ADDR)
@@ -44,26 +33,40 @@ def start_lua_bridge(server_sock):
     print(f'[Lua Bridge] Listening for lua on {LUA_OUTCOMING_ADDR[1]}')
     def lua_listener():
         nonlocal player_id
-        while True:
+        while not shutdown.is_set():
             try:
                 data, addr = lua_sock.recvfrom(BUFFER_SIZE)
                 msg = json.loads(data.decode())
+                print(msg)
+                if 'quit' in msg:
+                    server_sock.sendto(json.dumps({
+                        'action': 'leave',
+                        'player_id': player_id
+                    }).encode('utf-8'), SERVER_ADDR)
+                    if msg['quit']:
+                        shutdown.set()
+
                 if not player_id and 'player_id' in msg:
                     player_id = msg['player_id']
-                    print(f'[Lua Bridge] Gor player_id: {player_id}')
+                    print(f'[Lua Bridge] Got player_id: {player_id}')
                     server_sock.sendto(json.dumps({
                         'action': 'join_room',
                         'player_id': player_id
                     }).encode('utf-8'), SERVER_ADDR)
+
                 if player_id:
                     msg['player_id'] = player_id
                     server_sock.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
+
             except Exception as e:
-                print('[Listener Error] ', e)
+                print('[Lua Listener Error] ', e)
+        
+        lua_sock.close()
+        print('[Lua Bridge] Lua socket closed')
     
     player_id = None
     threading.Thread(target=lua_listener, daemon=True).start()
-    while not player_id:
+    while not player_id and not shutdown.is_set():
         time.sleep(0.1)
     return player_id
 
@@ -110,7 +113,7 @@ def start_server_listener(server_sock, player_id):
         Background thread: receive messages from server,
         auto-reply to 'ping' with 'pong', ignore printing pings.
         """
-        while True:
+        while not shutdown.isSet():
             try:
                 data, _ = server_sock.recvfrom(BUFFER_SIZE)
                 msg = json.loads(data.decode('utf-8'))
@@ -141,8 +144,11 @@ def main():
     player_id = start_lua_bridge(sock)
     start_server_listener(sock, player_id)
     print(f"[Client] Running for player_id: {player_id}")
-    while True:
-        time.sleep(1)
+    while not shutdown.is_set():
+        time.sleep(0)
+    
+    sock.close()
+            
 
     # # start listener thread
     # threading.Thread(target=listen, args=(sock, player_id), daemon=True).start()
