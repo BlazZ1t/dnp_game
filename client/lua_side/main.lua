@@ -70,7 +70,8 @@ end
 function love.quit()
     if udp then
         local quitMsg = {
-            quit = true
+            action = 'leave',
+            player_id = gameState.playerIdInput
         }
         local json = require("lib.dkjson")
         local message = json.encode(quitMsg)

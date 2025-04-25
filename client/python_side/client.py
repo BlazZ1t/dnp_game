@@ -38,24 +38,12 @@ def start_lua_bridge(server_sock):
                 data, addr = lua_sock.recvfrom(BUFFER_SIZE)
                 msg = json.loads(data.decode())
                 print(msg)
-                if 'quit' in msg:
-                    server_sock.sendto(json.dumps({
-                        'action': 'leave',
-                        'player_id': player_id
-                    }).encode('utf-8'), SERVER_ADDR)
-                    if msg['quit']:
-                        shutdown.set()
+                if msg['action'] == 'leave':
+                    server_sock.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
 
-                if not player_id and 'player_id' in msg:
+                if msg['action'] == 'join_room':
                     player_id = msg['player_id']
                     print(f'[Lua Bridge] Got player_id: {player_id}')
-                    server_sock.sendto(json.dumps({
-                        'action': 'join_room',
-                        'player_id': player_id
-                    }).encode('utf-8'), SERVER_ADDR)
-
-                if player_id:
-                    msg['player_id'] = player_id
                     server_sock.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
 
             except Exception as e:
