@@ -101,7 +101,7 @@ def start_server_listener(server_sock, player_id):
         Background thread: receive messages from server,
         auto-reply to 'ping' with 'pong', ignore printing pings.
         """
-        while not shutdown.isSet():
+        while not shutdown.is_set():
             try:
                 data, _ = server_sock.recvfrom(BUFFER_SIZE)
                 msg = json.loads(data.decode('utf-8'))
