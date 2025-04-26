@@ -39,7 +39,7 @@ def print_state(event: str):
     timestamp = time.strftime('%H:%M:%S', time.localtime())  # human-readable time
     print(f"\n[{timestamp}] {event}")                         # header line
     # pretty-print the game_state JSON for debugging
-    print(json.dumps(game_state, indent=2, ensure_ascii=False), "\n")
+    # print(json.dumps(game_state, indent=2, ensure_ascii=False), "\n")
 
 
 # -----------------------------------------------------
