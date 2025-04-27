@@ -6,7 +6,7 @@ math.randomseed(os.time())
 local game_state = {
     waiting_room = {},
     players = {},
-    bullets = {}
+    bullets = {},
 }
 
 local resources = {
@@ -14,8 +14,10 @@ local resources = {
     button_hover = love.graphics.newImage("assets/button_rectangle_depth_flat.png"),
     button_pressed = love.graphics.newImage("assets/button_rectangle_flat.png"),
     -- background = love.graphics.newImage("lobby_bg.jpg"),
+    font_title = love.graphics.newFont("assets/Kenney Future.ttf", 60),
     font_heading = love.graphics.newFont("assets/Kenney Future.ttf", 40),
     font_body = love.graphics.newFont("assets/Kenney Future.ttf", 20),
+    font_tank = love.graphics.newFont("assets/Kenney Future.ttf", 10),
     click_sound = love.audio.newSource("assets/click.ogg", "static"),
 
     tank_up = love.graphics.newImage("assets/tank_up.png"),
@@ -33,6 +35,7 @@ local network = {
     player_last_direction = "",
     player_position = { x = 0, y = 0 },
     player_speed = { vx = 0, vy = 0 },
+    is_alive = true,
     last_ping = 0,
     last_move = 0,
     last_sent_position = { x = 0, y = 0 },
@@ -147,6 +150,10 @@ function handleNetworkMessage(msg)
             network.player_position = game_state.players[network.player_id].position
         end
         game_state.players[network.player_id].position = network.player_position
+
+        if msg.game_state.players[network.player_id].hp == 0 then
+            network.is_alive = false
+        end
     elseif msg.action == "ping" then
         sendNetworkMessage({
             action = "pong",
@@ -170,7 +177,12 @@ end
 
 function drawTank(x, y, hp, id, direction)
     -- Draw tank
-    love.graphics.setColor(1, 0, 0)
+
+    if hp == 0 then
+        love.graphics.setColor(0.5, 0, 0)
+    else
+        love.graphics.setColor(1, 1, 0)
+    end
 
     local img = resources.tank_up
     if direction == "down" then
@@ -180,12 +192,29 @@ function drawTank(x, y, hp, id, direction)
     elseif direction == "right" then
         img = resources.tank_right
     end
-    love.graphics.draw(img, x - 20, y - 20)
+    -- Tank image is 150x150, but the tank is just 50x50 (approx). So we need to draw it at the center of the tank.
+    love.graphics.draw(img, x - 75, y - 75)
+
+    -- Print player ID on top of the tank
+    love.graphics.setFont(resources.font_tank)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf(id, x - 100, y - 60, 200, "center")
+
+    -- Draw HP bar
+    love.graphics.setColor(0, 1, 0)
+    local hp_width = 100 * (hp / 100)
+    love.graphics.rectangle("fill", x - 50, y + 30, hp_width, 10)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("line", x - 50, y + 30, 100, 10)
 end
 
 function drawPlayer()
     -- Draw player tank
-    love.graphics.setColor(0, 0, 1)
+    if network.is_alive then
+        love.graphics.setColor(0, 1, 0)
+    else
+        love.graphics.setColor(0.5, 0, 0)
+    end
 
     local img = resources.tank_up
     if network.player_direction == "" then
@@ -205,7 +234,7 @@ function drawPlayer()
             img = resources.tank_right
         end
     end
-    love.graphics.draw(img, network.player_position.x - 20, network.player_position.y - 20)
+    love.graphics.draw(img, network.player_position.x - 75, network.player_position.y - 75)
 end
 
 function drawGame()
@@ -216,41 +245,73 @@ function drawGame()
             drawTank(player.position.x, player.position.y, player.hp, player_id, player.direction)
         end
     end
+
+    for _, bullet in pairs(game_state.bullets) do
+        -- file = io.open("debug.log", "a")
+        -- file:write(json.encode(bullet))
+        -- file:close()
+
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.circle("fill", bullet.position.x, bullet.position.y, 5)
+    end
+
+    if not network.is_alive then
+        love.graphics.setColor(1, 0, 0)
+        love.graphics.setFont(resources.font_title)
+        love.graphics.printf("GAME OVER", 0, love.graphics.getHeight() / 2, love.graphics.getWidth(), "center")
+    end
+
+    -- Draw healthbar on the bottom of the screen
+    local hp = game_state.players[network.player_id].hp
+    local bar_width = (hp / 100) * love.graphics.getWidth()
+    love.graphics.setColor(1, 0, 0)
+    love.graphics.rectangle("fill", 0, love.graphics.getHeight() - 10, love.graphics.getWidth(), 10)
+    love.graphics.setColor(0, 1, 0)
+    love.graphics.rectangle("fill", 0, love.graphics.getHeight() - 10, bar_width, 10)
 end
 
 function love.keypressed(key)
-    if key == "w" then
-        network.player_direction = "up"
-        network.player_speed.vy = -200
-    elseif key == "a" then
-        network.player_direction = "left"
-        network.player_speed.vx = -200
-    elseif key == "s" then
-        network.player_direction = "down"
-        network.player_speed.vy = 200
-    elseif key == "d" then
-        network.player_direction = "right"
-        network.player_speed.vx = 200
+    if network.is_alive then
+        if key == "w" then
+            network.player_direction = "up"
+            network.player_speed.vy = -200
+        elseif key == "a" then
+            network.player_direction = "left"
+            network.player_speed.vx = -200
+        elseif key == "s" then
+            network.player_direction = "down"
+            network.player_speed.vy = 200
+        elseif key == "d" then
+            network.player_direction = "right"
+            network.player_speed.vx = 200
+        elseif key == "space" then
+            sendNetworkMessage({
+                action = "shoot",
+                player_id = network.player_id
+            })
+        end
     end
 end
 
 function love.keyreleased(key)
-    if key == "w" then
-        network.player_last_direction = "up"
-        network.player_direction = ""
-        network.player_speed.vy = 0
-    elseif key == "a" then
-        network.player_last_direction = "left"
-        network.player_direction = ""
-        network.player_speed.vx = 0
-    elseif key == "s" then
-        network.player_last_direction = "down"
-        network.player_direction = ""
-        network.player_speed.vy = 0
-    elseif key == "d" then
-        network.player_last_direction = "right"
-        network.player_direction = ""
-        network.player_speed.vx = 0
+    if network.is_alive then
+        if key == "w" then
+            network.player_last_direction = "up"
+            network.player_direction = ""
+            network.player_speed.vy = 0
+        elseif key == "a" then
+            network.player_last_direction = "left"
+            network.player_direction = ""
+            network.player_speed.vx = 0
+        elseif key == "s" then
+            network.player_last_direction = "down"
+            network.player_direction = ""
+            network.player_speed.vy = 0
+        elseif key == "d" then
+            network.player_last_direction = "right"
+            network.player_direction = ""
+            network.player_speed.vx = 0
+        end
     end
 end
 
