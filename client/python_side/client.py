@@ -26,7 +26,7 @@ COMMANDS = [
     {"name": "Custom JSON", "action": None,         "params": None},
 ]
 
-def start_lua_bridge(server_sock):
+def start_lua_listener(server_sock):
     lua_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     lua_sock.bind(LUA_INCOMING_ADDR)
 
@@ -97,7 +97,7 @@ def start_lua_bridge(server_sock):
 
 def start_server_listener(server_sock, player_id):
 
-    def listen():
+    def server_listener():
         """
         Background thread: receive messages from server,
         auto-reply to 'ping' with 'pong', ignore printing pings.
@@ -123,7 +123,7 @@ def start_server_listener(server_sock, player_id):
                 print('[Listener error] ', e)
         server_sock.close()
 
-    threading.Thread(target=listen, daemon=True).start()
+    threading.Thread(target=server_listener, daemon=True).start()
 
 def main():
     # set up UDP socket
@@ -131,7 +131,7 @@ def main():
     sock.settimeout(1.0)
 
     # get player ID
-    player_id = start_lua_bridge(sock)
+    player_id = start_lua_listener(sock)
     start_server_listener(sock, player_id)
     print(f"[Client] Running for player_id: {player_id}")
     while not shutdown.is_set():
