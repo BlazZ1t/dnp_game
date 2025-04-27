@@ -18,8 +18,8 @@ function love.load()
     udp = socket.udp()
     udp:settimeout(0)
     udp:setpeername("127.0.0.1", 9000)
-    -- os.execute("python ../python_side/client.py")
-    PythonProcess = io.popen("python ../python_side/client.py", "r")
+    os.execute("start ../python_side/client.py")
+    -- PythonProcess = io.popen("python ../python_side/client.py", "r")
 
     -- love.window.setMode(0, 0)
     love.graphics.setDefaultFilter("nearest", "nearest")
@@ -58,8 +58,7 @@ function love.keypressed(key)
 end
 
 function love.update(dt)
-    local line = PythonProcess:read("*l")
-    if line then print(line) end
+
 end
 
 function love.draw()

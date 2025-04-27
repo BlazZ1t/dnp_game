@@ -40,6 +40,7 @@ def start_lua_bridge(server_sock):
                 print(msg)
                 if msg['action'] == 'leave':
                     server_sock.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
+                    shutdown.set()
 
                 if msg['action'] == 'join_room':
                     player_id = msg['player_id']
@@ -120,6 +121,7 @@ def start_server_listener(server_sock, player_id):
                 print("\n<<", json.dumps(msg, indent=2), "\n")
             except Exception as e:
                 print('[Listener error] ', e)
+        server_sock.close()
 
     threading.Thread(target=listen, daemon=True).start()
 
@@ -134,8 +136,6 @@ def main():
     print(f"[Client] Running for player_id: {player_id}")
     while not shutdown.is_set():
         time.sleep(0)
-    
-    sock.close()
             
 
     # # start listener thread
