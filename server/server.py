@@ -43,13 +43,13 @@ starting_positions = [
 # Reset possible starting positions when the game starts
 # ------------------------------------------------------
 def reset_starting_positions():
-    starting_positions = [
+    positions = [
         {'x': 100, 'y': 100},
         {'x': 400, 'y': 100},
         {'x': 100, 'y': 400},
         {'x': 400, 'y': 400},
     ]
-    return starting_positions
+    return positions
 
 # ---------------------------------------
 # Utility: print full game state on event
