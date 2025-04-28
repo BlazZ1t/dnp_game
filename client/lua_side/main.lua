@@ -29,7 +29,7 @@ local resources = {
 local network = {
     udp = socket.udp(),
     server_ip = "127.0.0.1",
-    server_port = 9999,
+    server_port = 9000,
     player_id = "player_" .. tostring(math.random(1000, 9999)),
     player_direction = "",
     player_last_direction = "",
@@ -113,13 +113,15 @@ function love.update(dt)
 
 
     -- this is spam, but lets think it is OK :)
-    sendNetworkMessage({
-        action = "move",
-        player_id = network.player_id,
-        position = network.player_position,
-        direction = network.player_direction
-    })
-
+    if lobby.show_lobby == false then
+        sendNetworkMessage({
+            action = "move",
+            player_id = network.player_id,
+            position = network.player_position,
+            direction = network.player_direction
+        })
+    end
+    
     -- Network receiving
     while true do
         local data, err = network.udp:receive()
@@ -147,9 +149,9 @@ function handleNetworkMessage(msg)
         -- Check if we are in players, but the waiting_room is empty - this means game started
         if game_state.players[network.player_id] and next(game_state.waiting_room) == nil then
             lobby.show_lobby = false
-            network.player_position = game_state.players[network.player_id].position
+            -- network.player_position = game_state.players[network.player_id].position
         end
-        game_state.players[network.player_id].position = network.player_position
+        -- game_state.players[network.player_id].position = network.player_position
 
         if msg.game_state.players[network.player_id].hp == 0 then
             network.is_alive = false
@@ -414,6 +416,13 @@ function love.mousereleased(x, y, button)
             lobby.buttons.start.state = "hover"
         end
     end
+end
+
+function love.quit()
+    sendNetworkMessage({
+        action = 'leave',
+        player_id = network.player_id
+    })
 end
 
 function isPointInRect(x, y, rect)
