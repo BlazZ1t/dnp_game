@@ -9,6 +9,7 @@ local game_state = {
     bullets = {},
 }
 
+
 local resources = {
     button_normal = love.graphics.newImage("assets/button_rectangle_depth_flat.png"),
     button_hover = love.graphics.newImage("assets/button_rectangle_depth_flat.png"),
@@ -18,7 +19,10 @@ local resources = {
     font_heading = love.graphics.newFont("assets/Kenney Future.ttf", 40),
     font_body = love.graphics.newFont("assets/Kenney Future.ttf", 20),
     font_tank = love.graphics.newFont("assets/Kenney Future.ttf", 10),
+
     click_sound = love.audio.newSource("assets/click.ogg", "static"),
+    lobby_music = love.audio.newSource("assets/tetanki_lobby.ogg", "stream"),
+    game_music = love.audio.newSource("assets/tetanki_game.ogg", "stream"),
 
     tank_up = love.graphics.newImage("assets/tank_up.png"),
     tank_down = love.graphics.newImage("assets/tank_down.png"),
@@ -98,6 +102,10 @@ end
 function love.load()
     love.window.setTitle("Tank Battle - Lobby")
     love.window.setMode(800, 600)
+    resources.lobby_music:setLooping(true)
+    resources.game_music:setLooping(true)
+    currentMusic = resources.lobby_music
+    currentMusic:play()
     connectToServer()
 end
 
@@ -149,7 +157,7 @@ function handleNetworkMessage(msg)
         -- Check if we are in players, but the waiting_room is empty - this means game started
         if game_state.players[network.player_id] and next(game_state.waiting_room) == nil then
             lobby.show_lobby = false
-            network.player_position = game_state.players[network.player_id].position
+            -- network.player_position = game_state.players[network.player_id].position
         else
             game_state.players[network.player_id].position = network.player_position
         end
@@ -399,6 +407,9 @@ function love.mousepressed(x, y, button)
         elseif allPlayersReady() and isPointInRect(x, y, lobby.buttons.start) then
             lobby.buttons.start.state = "pressed"
             resources.click_sound:play()
+            currentMusic:stop()
+            currentMusic = resources.game_music
+            currentMusic:play()
             sendNetworkMessage({
                 action = "start_game",
                 player_id = network.player_id
