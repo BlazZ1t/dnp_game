@@ -113,7 +113,7 @@ function love.update(dt)
 
 
     -- this is spam, but lets think it is OK :)
-    if lobby.show_lobby == false then
+    if lobby.show_lobby == false and network.player_position ~= game_state.players[network.player_id].player_position then
         sendNetworkMessage({
             action = "move",
             player_id = network.player_id,
@@ -149,9 +149,10 @@ function handleNetworkMessage(msg)
         -- Check if we are in players, but the waiting_room is empty - this means game started
         if game_state.players[network.player_id] and next(game_state.waiting_room) == nil then
             lobby.show_lobby = false
-            -- network.player_position = game_state.players[network.player_id].position
+            network.player_position = game_state.players[network.player_id].position
+        else
+            game_state.players[network.player_id].position = network.player_position
         end
-        -- game_state.players[network.player_id].position = network.player_position
 
         if msg.game_state.players[network.player_id].hp == 0 then
             network.is_alive = false
