@@ -27,8 +27,6 @@ def start_lua_listener(server_socket, lua_socket):
                     msg = json.loads(data.decode('utf-8'))
                     #Resend the message to the server
                     if msg['action'] != 'leave':
-                        if msg['action'] != 'pong':
-                            print('[Lua Listener] Got message from client (not pong)')
                         server_socket.sendto(json.dumps(msg).encode('utf-8'), SERVER_ADDR)
                     #Leave if the message received
                     else:
@@ -56,9 +54,6 @@ def start_server_listener(server_socket, lua_socket):
                 data, _ = server_socket.recvfrom(BUFFER_SIZE)
                 if data:
                     msg = json.loads(data.decode('utf-8'))
-                    if (msg['action'] != 'ping'):
-                        print('[Server Listener] Got message from server: \n', msg)
-                        
                     if (LUA_ADDR == ''):
                         print('[Server Listener] But did not send it to the client')
                     else:

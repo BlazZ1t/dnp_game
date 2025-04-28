@@ -2,6 +2,7 @@ import asyncio        # for asynchronous I/O, event loop, and tasks
 import json           # for JSON serialization/deserialization
 import time           # for timestamps and sleeping
 import math           # for distance calculation (hit detection)
+import random         # for assignment of player positions
 
 # ----------------------------------------
 # World parameters (game map and bullets)
@@ -28,6 +29,27 @@ game_state = {
     'players': {},        # dict: player_id -> player info dict
     'bullets': []         # list of active bullet dicts
 }
+
+# ---------------------------
+# Possible starting positions
+# ---------------------------
+starting_positions = [
+    {'x': 100, 'y': 100},
+    {'x': 400, 'y': 100},
+    {'x': 100, 'y': 400},
+    {'x': 400, 'y': 400},
+]
+# ------------------------------------------------------
+# Reset possible starting positions when the game starts
+# ------------------------------------------------------
+def reset_starting_positions():
+    starting_positions = [
+        {'x': 100, 'y': 100},
+        {'x': 400, 'y': 100},
+        {'x': 100, 'y': 400},
+        {'x': 400, 'y': 400},
+    ]
+    return starting_positions
 
 # ---------------------------------------
 # Utility: print full game state on event
@@ -128,9 +150,11 @@ async def handle_client(addr, data, transport):
     # -------------------
     if action == 'set_ready':
         # mark ready and give initial spawn position/direction
+        starting_pos = random.choice(starting_positions)
+        starting_positions.remove(starting_positions.index(starting_pos))
         p.update({
             'ready': True,
-            'position': {'x': 100, 'y': 100},
+            'position': starting_pos,
             'direction': 'up'
         })
         print_state(f"Player '{player_id}' set ready")
@@ -175,6 +199,7 @@ async def handle_client(addr, data, transport):
                      if game_state['players'][pid]['ready']]
         if len(game_state['waiting_room']) >= 2 and len(ready_ids) == len(game_state['waiting_room']):
             game_state['waiting_room'].clear()  # clear lobby
+            starting_positions = reset_starting_positions()
             print_state("Game started")
 
     # ------------------

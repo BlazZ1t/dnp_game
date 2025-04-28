@@ -157,7 +157,12 @@ function handleNetworkMessage(msg)
         -- Check if we are in players, but the waiting_room is empty - this means game started
         if game_state.players[network.player_id] and next(game_state.waiting_room) == nil then
             lobby.show_lobby = false
-            -- network.player_position = game_state.players[network.player_id].position
+            if currentMusic ~= resources.game_music then
+                network.player_position = game_state.players[network.player_id].position
+                currentMusic:stop()
+                currentMusic = resources.game_music
+                currentMusic:play()
+            end
         else
             game_state.players[network.player_id].position = network.player_position
         end
@@ -407,9 +412,6 @@ function love.mousepressed(x, y, button)
         elseif allPlayersReady() and isPointInRect(x, y, lobby.buttons.start) then
             lobby.buttons.start.state = "pressed"
             resources.click_sound:play()
-            currentMusic:stop()
-            currentMusic = resources.game_music
-            currentMusic:play()
             sendNetworkMessage({
                 action = "start_game",
                 player_id = network.player_id
