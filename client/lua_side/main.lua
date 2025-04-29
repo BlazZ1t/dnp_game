@@ -65,6 +65,14 @@ local lobby = {
             h = 50,
             state = "normal",
             text = "Start"
+        },
+        revive = {
+            x = 300,
+            y = 400,
+            w = 200,
+            h = 50,
+            state = "normal",
+            text = "Revive"
         }
     }
 }
@@ -169,6 +177,8 @@ function handleNetworkMessage(msg)
 
         if msg.game_state.players[network.player_id].hp == 0 then
             network.is_alive = false
+        else
+            network.is_alive = true
         end
     elseif msg.action == "ping" then
         sendNetworkMessage({
@@ -265,6 +275,7 @@ function drawGame()
         love.graphics.setColor(1, 0, 0)
         love.graphics.setFont(resources.font_title)
         love.graphics.printf("GAME OVER", 0, love.graphics.getHeight() / 2, love.graphics.getWidth(), "center")
+        drawButton(lobby.buttons.revive)
     end
 
     -- Draw healthbar on the bottom of the screen
@@ -421,6 +432,15 @@ function love.mousepressed(x, y, button)
                 player_id = network.player_id
             })
         end
+    elseif not network.is_alive then
+        if isPointInRect(x, y, lobby.buttons.revive) then
+            lobby.buttons.revive.state = "pressed"
+            resources.click_sound:play()
+            sendNetworkMessage({
+                action = "revive",
+                player_id = network.player_id
+            })
+        end
     end
 end
 
@@ -432,6 +452,10 @@ function love.mousereleased(x, y, button)
             -- Start button
         elseif allPlayersReady() and isPointInRect(x, y, lobby.buttons.start) then
             lobby.buttons.start.state = "hover"
+        end
+    elseif not network.is_alive then
+        if isPointInRect(x, y, lobby.buttons.revive) then
+            lobby.buttons.revive.state = "hover"
         end
     end
 end
