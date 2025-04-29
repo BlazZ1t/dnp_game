@@ -2,6 +2,7 @@ import asyncio        # for asynchronous I/O, event loop, and tasks
 import json           # for JSON serialization/deserialization
 import time           # for timestamps and sleeping
 import math           # for distance calculation (hit detection)
+import random         # for assignment of player positions
 
 # ----------------------------------------
 # World parameters (game map and bullets)
@@ -28,6 +29,7 @@ game_state = {
     'players': {},        # dict: player_id -> player info dict
     'bullets': []         # list of active bullet dicts
 }
+
 
 # ---------------------------------------
 # Utility: print full game state on event
@@ -130,7 +132,7 @@ async def handle_client(addr, data, transport):
         # mark ready and give initial spawn position/direction
         p.update({
             'ready': True,
-            'position': {'x': 100, 'y': 100},
+            'position': {'x': '100', 'y': '100'},
             'direction': 'up'
         })
         print_state(f"Player '{player_id}' set ready")
@@ -333,7 +335,7 @@ async def main():
     # bind to localhost:9999
     transport, _ = await loop.create_datagram_endpoint(
         GameServerProtocol,
-        local_addr=('127.0.0.1', 9999)
+        local_addr=('192.168.137.128', 9999)
     )
 
     # start background loops
