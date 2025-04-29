@@ -335,7 +335,7 @@ async def main():
     # bind to localhost:9999
     transport, _ = await loop.create_datagram_endpoint(
         GameServerProtocol,
-        local_addr=('192.168.137.128', 9999)
+        local_addr=('10.247.1.236', 9999)
     )
 
     # start background loops
