@@ -189,6 +189,12 @@ async def handle_client(addr, data, transport):
         # delete all player data
         del game_state['players'][player_id]
         print_state(f"Player '{player_id}' left the game")
+    
+    elif action == 'revive':
+        p.update({
+            'hp': 100,
+        })
+        print_state(f"Revived '{player_id}'")
 
     # -------------
     # In-game chat
