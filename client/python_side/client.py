@@ -4,7 +4,7 @@ import threading
 import time
 
 # Server address (host, port)
-SERVER_ADDR = ('192.168.137.128', 9999)
+SERVER_ADDR = ('10.247.1.236', 9999)
 BUFFER_SIZE = 65536
 
 LOCAL_ADDR = ('127.0.0.1', 9000)
