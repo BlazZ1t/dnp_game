@@ -192,7 +192,8 @@ async def handle_client(addr, data, transport):
     
     elif action == 'revive':
         p.update({
-            'hp': 100
+            'hp': 100,
+            'position': {'x':100, 'y':100}
         })
         print_state(f"Revived '{player_id}'")
 
