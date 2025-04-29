@@ -132,7 +132,7 @@ async def handle_client(addr, data, transport):
         # mark ready and give initial spawn position/direction
         p.update({
             'ready': True,
-            'position': {'x': '100', 'y': '100'},
+            'position': {'x': 100, 'y': 100},
             'direction': 'up'
         })
         print_state(f"Player '{player_id}' set ready")
