@@ -233,22 +233,12 @@ function drawPlayer()
     end
 
     local img = resources.tank_up
-    if network.player_direction == "" then
-        if network.player_last_direction == "down" then
-            img = resources.tank_down
-        elseif network.player_last_direction == "left" then
-            img = resources.tank_left
-        elseif network.player_last_direction == "right" then
-            img = resources.tank_right
-        end
-    else
-        if network.player_direction == "down" then
-            img = resources.tank_down
-        elseif network.player_direction == "left" then
-            img = resources.tank_left
-        elseif network.player_direction == "right" then
-            img = resources.tank_right
-        end
+    if network.player_direction == "down" then
+        img = resources.tank_down
+    elseif network.player_direction == "left" then
+        img = resources.tank_left
+    elseif network.player_direction == "right" then
+        img = resources.tank_right
     end
     love.graphics.draw(img, network.player_position.x - 75, network.player_position.y - 75)
 end
@@ -317,15 +307,7 @@ end
 function love.keyreleased(key)
     print(key)
     if network.is_alive then
-        if key == "w" then
-            checkUnreleasedKeys(key)
-        elseif key == "a" then
-            checkUnreleasedKeys(key)
-        elseif key == "s" then
-            checkUnreleasedKeys(key)
-        elseif key == "d" then
-            checkUnreleasedKeys(key)
-        end
+        checkUnreleasedKeys(key)
     end
 end
 
