@@ -35,14 +35,15 @@ local network = {
     server_ip = "127.0.0.1",
     server_port = 9000,
     player_id = "player_" .. tostring(math.random(1000, 9999)),
+    room_id = "",
     player_direction = "",
-    player_last_direction = "",
     player_position = { x = 0, y = 0 },
     player_speed = { vx = 0, vy = 0 },
     is_alive = true,
     last_ping = 0,
     last_move = 0,
     last_sent_position = { x = 0, y = 0 },
+    available_rooms_list = {}
 }
 
 local lobby = {
@@ -73,7 +74,7 @@ local lobby = {
             h = 50,
             state = "normal",
             text = "Revive"
-        }
+        },
     }
 }
 
@@ -129,7 +130,7 @@ function love.update(dt)
 
 
     -- this is spam, but lets think it is OK :)
-    if lobby.show_lobby == false and network.player_position ~= game_state.players[network.player_id].player_position then
+    if lobby.show_lobby == false and network.player_position ~= game_state.players[network.player_id].player_position and network.room_id ~= "" then
         sendNetworkMessage({
             action = "move",
             player_id = network.player_id,
@@ -188,11 +189,15 @@ function handleNetworkMessage(msg)
     elseif msg.action == "game_start" then
         lobby.show_lobby = false
         network.player_position = game_state.players[network.player_id].position
+    elseif msg.action == "rooms_list" then
+        network.available_rooms_list = msg.rooms
     end
 end
 
 function love.draw()
-    if lobby.show_lobby then
+    if network.room_id == "" then
+        drawAvailableRoomsList()
+    elseif lobby.show_lobby then
         drawLobby()
     else
         drawGame()
@@ -399,6 +404,43 @@ function drawLobby()
     end
 end
 
+local room_buttons = {}
+local create_room_button = {
+    x = 600,
+    y = 500,
+    w = 150,
+    h = 40,
+    state = "normal",
+    text = "Create Room"
+}
+
+function drawAvailableRoomsList()
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("Select a Room - Player ID: " .. network.player_id, 20, 20)
+
+    -- Create and draw buttons for each room
+    local y = 70
+    room_buttons = {}
+
+    for i, room_id in ipairs(network.available_rooms_list) do
+        local button = {
+            x = 100,
+            y = y,
+            w = 300,
+            h = 40,
+            state = "normal",
+            text = "Join Room: " .. room_id,
+            room_id = room_id
+        }
+        drawButton(button)
+        table.insert(room_buttons, button)
+        y = y + 60
+    end
+
+    -- Draw "Create Room" button
+    drawButton(create_room_button)
+end
+
 function love.mousemoved(x, y)
     if lobby.show_lobby then
         for _, btn in pairs(lobby.buttons) do
@@ -412,7 +454,34 @@ function love.mousemoved(x, y)
 end
 
 function love.mousepressed(x, y, button)
-    if lobby.show_lobby and button == 1 then
+    if network.room_id == "" and button == 1 then
+        -- Check room buttons
+        for _, b in ipairs(room_buttons) do
+            if x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h then
+                sendNetworkMessage({
+                    action = "join_room",
+                    player_id = network.player_id,
+                    room_id = b.room_id
+                })
+                break
+            end
+        end
+
+        -- Check create room button
+        if x >= create_room_button.x and x <= create_room_button.x + create_room_button.w and
+            y >= create_room_button.y and y <= create_room_button.y + create_room_button.h then
+
+            -- Extract number from player_id, e.g. "player_1234" → "1234"
+            local num = string.match(network.player_id, "%d+")
+            if num then
+                sendNetworkMessage({
+                    action = "create_room",
+                    player_id = network.player_id,
+                    room_id = num
+                })
+            end
+        end
+    elseif lobby.show_lobby and button == 1 then
         -- Ready button
         if isPointInRect(x, y, lobby.buttons.ready) then
             lobby.buttons.ready.state = "pressed"
@@ -445,7 +514,9 @@ function love.mousepressed(x, y, button)
 end
 
 function love.mousereleased(x, y, button)
-    if lobby.show_lobby and button == 1 then
+    if network.room_id == "" then
+
+    elseif lobby.show_lobby and button == 1 then
         -- Ready button
         if isPointInRect(x, y, lobby.buttons.ready) then
             lobby.buttons.ready.state = "hover"
