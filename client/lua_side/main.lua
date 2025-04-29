@@ -287,19 +287,24 @@ function drawGame()
 end
 
 function love.keypressed(key)
+    print(key)
     if network.is_alive then
         if key == "w" then
             network.player_direction = "up"
             network.player_speed.vy = -200
+            network.player_speed.vx = 0
         elseif key == "a" then
             network.player_direction = "left"
             network.player_speed.vx = -200
+            network.player_speed.vy = 0
         elseif key == "s" then
             network.player_direction = "down"
             network.player_speed.vy = 200
+            network.player_speed.vx = 0
         elseif key == "d" then
             network.player_direction = "right"
             network.player_speed.vx = 200
+            network.player_speed.vy = 0
         elseif key == "space" then
             sendNetworkMessage({
                 action = "shoot",
@@ -310,24 +315,41 @@ function love.keypressed(key)
 end
 
 function love.keyreleased(key)
+    print(key)
     if network.is_alive then
         if key == "w" then
-            network.player_last_direction = "up"
-            network.player_direction = ""
-            network.player_speed.vy = 0
+            checkUnreleasedKeys(key)
         elseif key == "a" then
-            network.player_last_direction = "left"
-            network.player_direction = ""
-            network.player_speed.vx = 0
+            checkUnreleasedKeys(key)
         elseif key == "s" then
-            network.player_last_direction = "down"
-            network.player_direction = ""
-            network.player_speed.vy = 0
+            checkUnreleasedKeys(key)
         elseif key == "d" then
-            network.player_last_direction = "right"
-            network.player_direction = ""
-            network.player_speed.vx = 0
+            checkUnreleasedKeys(key)
         end
+    end
+end
+
+--Checks if should update the direction to the key that has been pressed before
+function checkUnreleasedKeys(key)
+    if love.keyboard.isDown('w') and key ~= 'w' then
+        network.player_direction = "up"
+        network.player_speed.vy = -200
+        network.player_speed.vx = 0
+    elseif love.keyboard.isDown('a') and key ~= 'a' then
+        network.player_direction = "left"
+        network.player_speed.vx = -200
+        network.player_speed.vy = 0
+    elseif love.keyboard.isDown('s') and key ~= 's' then
+        network.player_direction = "down"
+        network.player_speed.vy = 200
+        network.player_speed.vx = 0
+    elseif love.keyboard.isDown('d') and key ~= 'd' then
+        network.player_direction = "right"
+        network.player_speed.vx = 200
+        network.player_speed.vy = 0
+    else
+        network.player_speed.vx = 0
+        network.player_speed.vy = 0
     end
 end
 
