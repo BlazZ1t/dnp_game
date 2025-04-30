@@ -175,7 +175,7 @@ end
 function love.update(dt)
     -- Love is buggy!!!! This dt thing is not reliable
 
-    if network.player_speed.vx ~= 0 or network.player_speed.vy ~= 0 then
+    if network.player_speed.vx ~= 0 or network.player_speed.vy ~= 0  and network.is_alive then
         local new_position = network.player_position
         new_position.x = network.player_position.x + (network.player_speed.vx * dt)
         new_position.y = network.player_position.y + (network.player_speed.vy * dt)
@@ -233,6 +233,8 @@ function handleNetworkMessage(msg)
 
         if msg.game_state.players[network.player_id].hp == 0 then
             network.is_alive = false
+            network.player_speed.vx = 0
+            network.player_speed.vy = 0
         else
             network.is_alive = true
         end
