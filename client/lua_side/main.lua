@@ -45,12 +45,12 @@ local resources = {
     tank_right_4 = love.graphics.newImage("assets/4_tanks/tank_right.png"),
 }
 
-local skin = {
-    tank_up = resources.tank_up_3,
-    tank_down = resources.tank_down_3,
-    tank_left = resources.tank_left_3,
-    tank_right = resources.tank_right_3
-}
+-- local skin = {
+--     tank_up = resources.tank_up_3,
+--     tank_down = resources.tank_down_3,
+--     tank_left = resources.tank_left_3,
+--     tank_right = resources.tank_right_3
+-- }
 
 local network = {
     udp = socket.udp(),
@@ -112,30 +112,36 @@ local function allPlayersReady()
     return count >= 2
 end
 
-function getSkin()
-    if network.player_skin ~= 0 then
-        if network.player_skin == 1 then
-            skin.tank_up = resources.tank_up_1
-            skin.tank_down = resources.tank_down_1
-            skin.tank_left = resources.tank_left_1
-            skin.tank_right = resources.tank_right_1
-        elseif network.player_skin == 2 then
-            skin.tank_up = resources.tank_up_2
-            skin.tank_down = resources.tank_down_2
-            skin.tank_left = resources.tank_left_2
-            skin.tank_right = resources.tank_right_2
-        elseif network.player_skin == 3 then
-            skin.tank_up = resources.tank_up_3
-            skin.tank_down = resources.tank_down_3
-            skin.tank_left = resources.tank_left_3
-            skin.tank_right = resources.tank_right_3
-        elseif network.player_skin == 4 then
-            skin.tank_up = resources.tank_up_4
-            skin.tank_down = resources.tank_down_4
-            skin.tank_left = resources.tank_left_4
-            skin.tank_right = resources.tank_right_4
-        end
+function getSkin(skin_id)
+    local skin = {}
+    if skin_id == 1 then
+        skin.tank_up = resources.tank_up_1
+        skin.tank_down = resources.tank_down_1
+        skin.tank_left = resources.tank_left_1
+        skin.tank_right = resources.tank_right_1
+    elseif skin_id == 2 then
+        skin.tank_up = resources.tank_up_2
+        skin.tank_down = resources.tank_down_2
+        skin.tank_left = resources.tank_left_2
+        skin.tank_right = resources.tank_right_2
+    elseif skin_id == 3 then
+        skin.tank_up = resources.tank_up_3
+        skin.tank_down = resources.tank_down_3
+        skin.tank_left = resources.tank_left_3
+        skin.tank_right = resources.tank_right_3
+    elseif skin_id == 4 then
+        skin.tank_up = resources.tank_up_4
+        skin.tank_down = resources.tank_down_4
+        skin.tank_left = resources.tank_left_4
+        skin.tank_right = resources.tank_right_4
+    else
+        skin.tank_up = resources.tank_up_3
+        skin.tank_down = resources.tank_down_3
+        skin.tank_left = resources.tank_left_3
+        skin.tank_right = resources.tank_right_3
     end
+
+    return skin
 end
 
 function connectToServer()
@@ -176,8 +182,6 @@ function love.update(dt)
         network.player_position = new_position
     end
 
-    getSkin()
-
 
     -- this is spam, but lets think it is OK :)
     if lobby.show_lobby == false and network.player_position ~= game_state.players[network.player_id].player_position then
@@ -216,8 +220,8 @@ function handleNetworkMessage(msg)
         -- Check if we are in players, but the waiting_room is empty - this means game started
         if game_state.players[network.player_id] and next(game_state.waiting_room) == nil then
             lobby.show_lobby = false
-            network.player_skin = game_state.players.skin
             if currentMusic ~= resources.game_music then
+                network.player_skin = game_state.players[network.player_id].skin
                 network.player_position = game_state.players[network.player_id].position
                 currentMusic:stop()
                 currentMusic = resources.game_music
@@ -253,7 +257,7 @@ end
 
 -- Game related
 
-function drawTank(x, y, hp, id, direction)
+function drawTank(x, y, hp, id, direction, skin_id)
 
     -- Draw tank
     if hp == 0 then
@@ -261,6 +265,8 @@ function drawTank(x, y, hp, id, direction)
     else
         love.graphics.setColor(1, 1, 1)
     end
+
+    local skin = getSkin(skin_id)
 
     local img = skin.tank_up
     if direction == "down" then
@@ -286,13 +292,15 @@ function drawTank(x, y, hp, id, direction)
     love.graphics.rectangle("line", x - 50, y + 30, 100, 10)
 end
 
-function drawPlayer()
+function drawPlayer(skin_id)
     -- Draw player tank
     if (network.is_alive) then
         love.graphics.setColor(1, 1, 1)
     else
         love.graphics.setColor(1, 0.1, 0.1)
     end
+
+    local skin = getSkin(skin_id)
 
     local img = skin.tank_up
     if network.player_direction == "down" then
@@ -308,9 +316,9 @@ end
 function drawGame()
     for player_id, player in pairs(game_state.players) do
         if player_id == network.player_id then
-            drawPlayer()
+            drawPlayer(network.player_skin)
         else
-            drawTank(player.position.x, player.position.y, player.hp, player_id, player.direction)
+            drawTank(player.position.x, player.position.y, player.hp, player_id, player.direction, player.skin)
         end
     end
 
@@ -340,7 +348,6 @@ function drawGame()
 end
 
 function love.keypressed(key)
-    print(key)
     if network.is_alive then
         if key == "w" then
             network.player_direction = "up"
@@ -368,7 +375,6 @@ function love.keypressed(key)
 end
 
 function love.keyreleased(key)
-    print(key)
     if network.is_alive then
         checkUnreleasedKeys(key)
     end

@@ -99,12 +99,13 @@ async def handle_client(addr, data, transport):
         if player_id not in game_state['players']:
             # initialize player info
             game_state['players'][player_id] = {
-                'ready': False,         # has not signaled ready yet
-                'position': None,       # will be set on ready
-                'direction': None,      # will be set on ready
-                'hp': 100,              # starting health points
-                'address': addr,        # UDP address tuple
-                'last_pong': time.time()# last pong timestamp
+                'ready': False,          # has not signaled ready yet
+                'position': None,        # will be set on ready
+                'direction': None,       # will be set on ready
+                'hp': 100,               # starting health points
+                'address': addr,         # UDP address tuple
+                'last_pong': time.time(),# last pong timestamp
+                'skin': 0
             }
             game_state['waiting_room'].append(player_id)
             print_state(f"Player '{player_id}' joined waiting room (hp=100)")
