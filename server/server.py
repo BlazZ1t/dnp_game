@@ -27,10 +27,9 @@ PONG_TIMEOUT  = 30        # how long to wait for a pong before disconnecting (se
 game_state = {
     'waiting_room': [],   # list of player_id strings waiting to start
     'players': {},        # dict: player_id -> player info dict
-    'bullets': []         # list of active bullet dicts
+    'bullets': [],        # list of active bullet dicts
+    'game_started': False
 }
-
-game_started = False
 
 
 # ---------------------------------------
@@ -102,15 +101,17 @@ async def handle_client(addr, data, transport):
             # initialize player info
             game_state['players'][player_id] = {
                 'ready': False,          # has not signaled ready yet
-                'position': None,        # will be set on ready
-                'direction': None,       # will be set on ready
+                'position': {'x': 100, 'y': 100},        # will be set on ready
+                'direction': "up",       # will be set on ready
                 'hp': 100,               # starting health points
                 'address': addr,         # UDP address tuple
                 'last_pong': time.time(),# last pong timestamp
                 'skin': 0
             }
-            if not game_started:
+            if not game_state['game_started']:
                 game_state['waiting_room'].append(player_id)
+            else:
+                game_state['players'][player_id]['ready'] = True
             print_state(f"Player '{player_id}' joined waiting room (hp=100)")
         else:
             # returning player: just update address and pong time
@@ -178,6 +179,7 @@ async def handle_client(addr, data, transport):
     # ----------------
     elif action == 'start_game':
         # require at least 2 players and all ready
+        game_state['game_started'] = True
         ready_ids = [pid for pid in game_state['waiting_room']
                      if game_state['players'][pid]['ready']]
         if len(game_state['waiting_room']) >= 2 and len(ready_ids) == len(game_state['waiting_room']):
@@ -194,7 +196,7 @@ async def handle_client(addr, data, transport):
         # delete all player data
         del game_state['players'][player_id]
         if len(game_state['players']) == 0:
-            game_started = False
+            game_state['game_started'] = False
         print_state(f"Player '{player_id}' left the game")
     
     elif action == 'revive':
