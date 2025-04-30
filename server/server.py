@@ -10,7 +10,7 @@ import random         # for assignment of player positions
 MAP_WIDTH       = 800     # map width in pixels (x from 0 to MAP_WIDTH)
 MAP_HEIGHT      = 600     # map height in pixels (y from 0 to MAP_HEIGHT)
 BULLET_LIFETIME = 3.0     # how long a bullet lives (seconds) before disappearing
-BULLET_SPEED    = 300     # bullet speed (pixels per second)
+BULLET_SPEED    = 600     # bullet speed (pixels per second)
 PLAYER_RADIUS   = 20      # approximate radius of a tank (for hit detection)
 BULLET_DAMAGE   = 25      # how much HP a bullet removes on hit
 
@@ -27,7 +27,8 @@ PONG_TIMEOUT  = 30        # how long to wait for a pong before disconnecting (se
 game_state = {
     'waiting_room': [],   # list of player_id strings waiting to start
     'players': {},        # dict: player_id -> player info dict
-    'bullets': []         # list of active bullet dicts
+    'bullets': [],        # list of active bullet dicts
+    'game_started': False
 }
 
 
@@ -99,14 +100,18 @@ async def handle_client(addr, data, transport):
         if player_id not in game_state['players']:
             # initialize player info
             game_state['players'][player_id] = {
-                'ready': False,         # has not signaled ready yet
-                'position': None,       # will be set on ready
-                'direction': None,      # will be set on ready
-                'hp': 100,              # starting health points
-                'address': addr,        # UDP address tuple
-                'last_pong': time.time()# last pong timestamp
+                'ready': False,          # has not signaled ready yet
+                'position': {'x': random.randint(100, 700), 'y': random.randint(100, 500)},        # will be set on ready
+                'direction': "up",       # will be set on ready
+                'hp': 100,               # starting health points
+                'address': addr,         # UDP address tuple
+                'last_pong': time.time(),# last pong timestamp
+                'skin': random.randint(1, 4)
             }
-            game_state['waiting_room'].append(player_id)
+            if not game_state['game_started']:
+                game_state['waiting_room'].append(player_id)
+            else:
+                game_state['players'][player_id]['ready'] = True
             print_state(f"Player '{player_id}' joined waiting room (hp=100)")
         else:
             # returning player: just update address and pong time
@@ -132,8 +137,6 @@ async def handle_client(addr, data, transport):
         # mark ready and give initial spawn position/direction
         p.update({
             'ready': True,
-            'position': {'x': '100', 'y': '100'},
-            'direction': 'up'
         })
         print_state(f"Player '{player_id}' set ready")
 
@@ -173,6 +176,7 @@ async def handle_client(addr, data, transport):
     # ----------------
     elif action == 'start_game':
         # require at least 2 players and all ready
+        game_state['game_started'] = True
         ready_ids = [pid for pid in game_state['waiting_room']
                      if game_state['players'][pid]['ready']]
         if len(game_state['waiting_room']) >= 2 and len(ready_ids) == len(game_state['waiting_room']):
@@ -188,7 +192,15 @@ async def handle_client(addr, data, transport):
             game_state['waiting_room'].remove(player_id)
         # delete all player data
         del game_state['players'][player_id]
+        if len(game_state['players']) == 0:
+            game_state['game_started'] = False
         print_state(f"Player '{player_id}' left the game")
+    
+    elif action == 'revive':
+        p.update({
+            'hp': 100,
+        })
+        print_state(f"Revived '{player_id}'")
 
     # -------------
     # In-game chat

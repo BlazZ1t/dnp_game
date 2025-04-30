@@ -1,5 +1,6 @@
 local socket = require "socket"
 local json = require "json" -- You'll need to add a JSON library
+local os = require "os"
 
 math.randomseed(os.time())
 
@@ -7,6 +8,7 @@ local game_state = {
     waiting_room = {},
     players = {},
     bullets = {},
+    game_started = false,
 }
 
 
@@ -14,7 +16,7 @@ local resources = {
     button_normal = love.graphics.newImage("assets/button_rectangle_depth_flat.png"),
     button_hover = love.graphics.newImage("assets/button_rectangle_depth_flat.png"),
     button_pressed = love.graphics.newImage("assets/button_rectangle_flat.png"),
-    -- background = love.graphics.newImage("lobby_bg.jpg"),
+    background = love.graphics.newImage("assets/game_background.png"),
     font_title = love.graphics.newFont("assets/Kenney Future.ttf", 60),
     font_heading = love.graphics.newFont("assets/Kenney Future.ttf", 40),
     font_body = love.graphics.newFont("assets/Kenney Future.ttf", 20),
@@ -24,17 +26,40 @@ local resources = {
     lobby_music = love.audio.newSource("assets/tetanki_lobby.ogg", "stream"),
     game_music = love.audio.newSource("assets/tetanki_game.ogg", "stream"),
 
-    tank_up = love.graphics.newImage("assets/tank_up.png"),
-    tank_down = love.graphics.newImage("assets/tank_down.png"),
-    tank_left = love.graphics.newImage("assets/tank_left.png"),
-    tank_right = love.graphics.newImage("assets/tank_right.png"),
+    tank_up_1 = love.graphics.newImage("assets/1_tanks/tank_up.png"),
+    tank_down_1 = love.graphics.newImage("assets/1_tanks/tank_down.png"),
+    tank_left_1 = love.graphics.newImage("assets/1_tanks/tank_left.png"),
+    tank_right_1 = love.graphics.newImage("assets/1_tanks/tank_right.png"),
+
+    tank_up_2 = love.graphics.newImage("assets/2_tanks/tank_up.png"),
+    tank_down_2 = love.graphics.newImage("assets/2_tanks/tank_down.png"),
+    tank_left_2 = love.graphics.newImage("assets/2_tanks/tank_left.png"),
+    tank_right_2 = love.graphics.newImage("assets/2_tanks/tank_right.png"),
+
+    tank_up_3 = love.graphics.newImage("assets/3_tanks/tank_up.png"),
+    tank_down_3 = love.graphics.newImage("assets/3_tanks/tank_down.png"),
+    tank_left_3 = love.graphics.newImage("assets/3_tanks/tank_left.png"),
+    tank_right_3 = love.graphics.newImage("assets/3_tanks/tank_right.png"),
+
+    tank_up_4 = love.graphics.newImage("assets/4_tanks/tank_up.png"),
+    tank_down_4 = love.graphics.newImage("assets/4_tanks/tank_down.png"),
+    tank_left_4 = love.graphics.newImage("assets/4_tanks/tank_left.png"),
+    tank_right_4 = love.graphics.newImage("assets/4_tanks/tank_right.png"),
 }
+
+-- local skin = {
+--     tank_up = resources.tank_up_3,
+--     tank_down = resources.tank_down_3,
+--     tank_left = resources.tank_left_3,
+--     tank_right = resources.tank_right_3
+-- }
 
 local network = {
     udp = socket.udp(),
     server_ip = "127.0.0.1",
     server_port = 9000,
     player_id = "player_" .. tostring(math.random(1000, 9999)),
+    player_skin = 0,
     player_direction = "",
     player_last_direction = "",
     player_position = { x = 0, y = 0 },
@@ -43,6 +68,7 @@ local network = {
     last_ping = 0,
     last_move = 0,
     last_sent_position = { x = 0, y = 0 },
+    last_bullet_fired_ts = os.time()
 }
 
 local lobby = {
@@ -65,6 +91,14 @@ local lobby = {
             h = 50,
             state = "normal",
             text = "Start"
+        },
+        revive = {
+            x = 300,
+            y = 400,
+            w = 200,
+            h = 50,
+            state = "normal",
+            text = "Revive"
         }
     }
 }
@@ -79,6 +113,38 @@ local function allPlayersReady()
     end
     -- Ony true if more than 2 players
     return count >= 2
+end
+
+function getSkin(skin_id)
+    local skin = {}
+    if skin_id == 1 then
+        skin.tank_up = resources.tank_up_1
+        skin.tank_down = resources.tank_down_1
+        skin.tank_left = resources.tank_left_1
+        skin.tank_right = resources.tank_right_1
+    elseif skin_id == 2 then
+        skin.tank_up = resources.tank_up_2
+        skin.tank_down = resources.tank_down_2
+        skin.tank_left = resources.tank_left_2
+        skin.tank_right = resources.tank_right_2
+    elseif skin_id == 3 then
+        skin.tank_up = resources.tank_up_3
+        skin.tank_down = resources.tank_down_3
+        skin.tank_left = resources.tank_left_3
+        skin.tank_right = resources.tank_right_3
+    elseif skin_id == 4 then
+        skin.tank_up = resources.tank_up_4
+        skin.tank_down = resources.tank_down_4
+        skin.tank_left = resources.tank_left_4
+        skin.tank_right = resources.tank_right_4
+    else
+        skin.tank_up = resources.tank_up_3
+        skin.tank_down = resources.tank_down_3
+        skin.tank_left = resources.tank_left_3
+        skin.tank_right = resources.tank_right_3
+    end
+
+    return skin
 end
 
 function connectToServer()
@@ -100,7 +166,7 @@ function sendNetworkMessage(msg)
 end
 
 function love.load()
-    love.window.setTitle("Tank Battle - Lobby")
+    love.window.setTitle("Tetanki - Lobby")
     love.window.setMode(800, 600)
     resources.lobby_music:setLooping(true)
     resources.game_music:setLooping(true)
@@ -112,7 +178,7 @@ end
 function love.update(dt)
     -- Love is buggy!!!! This dt thing is not reliable
 
-    if network.player_speed.vx ~= 0 or network.player_speed.vy ~= 0 then
+    if network.player_speed.vx ~= 0 or network.player_speed.vy ~= 0  and network.is_alive then
         local new_position = network.player_position
         new_position.x = network.player_position.x + (network.player_speed.vx * dt)
         new_position.y = network.player_position.y + (network.player_speed.vy * dt)
@@ -155,9 +221,11 @@ function handleNetworkMessage(msg)
         -- Print "Update state"
         game_state = msg.game_state
         -- Check if we are in players, but the waiting_room is empty - this means game started
-        if game_state.players[network.player_id] and next(game_state.waiting_room) == nil then
+        if game_state.game_started then
             lobby.show_lobby = false
             if currentMusic ~= resources.game_music then
+                love.window.setTitle('Tetanki - FIGHT!')
+                network.player_skin = game_state.players[network.player_id].skin
                 network.player_position = game_state.players[network.player_id].position
                 currentMusic:stop()
                 currentMusic = resources.game_music
@@ -169,6 +237,10 @@ function handleNetworkMessage(msg)
 
         if msg.game_state.players[network.player_id].hp == 0 then
             network.is_alive = false
+            network.player_speed.vx = 0
+            network.player_speed.vy = 0
+        else
+            network.is_alive = true
         end
     elseif msg.action == "ping" then
         sendNetworkMessage({
@@ -191,25 +263,27 @@ end
 
 -- Game related
 
-function drawTank(x, y, hp, id, direction)
-    -- Draw tank
+function drawTank(x, y, hp, id, direction, skin_id)
 
+    -- Draw tank
     if hp == 0 then
-        love.graphics.setColor(0.5, 0, 0)
+        love.graphics.setColor(1, 0.1, 0.1)
     else
-        love.graphics.setColor(1, 1, 0)
+        love.graphics.setColor(1, 1, 1)
     end
 
-    local img = resources.tank_up
+    local skin = getSkin(skin_id)
+
+    local img = skin.tank_up
     if direction == "down" then
-        img = resources.tank_down
+        img = skin.tank_down
     elseif direction == "left" then
-        img = resources.tank_left
+        img = skin.tank_left
     elseif direction == "right" then
-        img = resources.tank_right
+        img = skin.tank_right
     end
     -- Tank image is 150x150, but the tank is just 50x50 (approx). So we need to draw it at the center of the tank.
-    love.graphics.draw(img, x - 75, y - 75)
+    love.graphics.draw(img, x - 25, y - 25)
 
     -- Print player ID on top of the tank
     love.graphics.setFont(resources.font_tank)
@@ -224,41 +298,35 @@ function drawTank(x, y, hp, id, direction)
     love.graphics.rectangle("line", x - 50, y + 30, 100, 10)
 end
 
-function drawPlayer()
+function drawPlayer(skin_id)
     -- Draw player tank
-    if network.is_alive then
-        love.graphics.setColor(0, 1, 0)
+    if (network.is_alive) then
+        love.graphics.setColor(1, 1, 1)
     else
-        love.graphics.setColor(0.5, 0, 0)
+        love.graphics.setColor(1, 0.1, 0.1)
     end
 
-    local img = resources.tank_up
-    if network.player_direction == "" then
-        if network.player_last_direction == "down" then
-            img = resources.tank_down
-        elseif network.player_last_direction == "left" then
-            img = resources.tank_left
-        elseif network.player_last_direction == "right" then
-            img = resources.tank_right
-        end
-    else
-        if network.player_direction == "down" then
-            img = resources.tank_down
-        elseif network.player_direction == "left" then
-            img = resources.tank_left
-        elseif network.player_direction == "right" then
-            img = resources.tank_right
-        end
+    local skin = getSkin(skin_id)
+
+    local img = skin.tank_up
+    if network.player_direction == "down" then
+        img = skin.tank_down
+    elseif network.player_direction == "left" then
+        img = skin.tank_left
+    elseif network.player_direction == "right" then
+        img = skin.tank_right
     end
-    love.graphics.draw(img, network.player_position.x - 75, network.player_position.y - 75)
+    love.graphics.draw(img, network.player_position.x - 25, network.player_position.y - 25)
 end
 
 function drawGame()
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.draw(resources.background, 0, 0)
     for player_id, player in pairs(game_state.players) do
         if player_id == network.player_id then
-            drawPlayer()
+            drawPlayer(network.player_skin)
         else
-            drawTank(player.position.x, player.position.y, player.hp, player_id, player.direction)
+            drawTank(player.position.x, player.position.y, player.hp, player_id, player.direction, player.skin)
         end
     end
 
@@ -275,6 +343,7 @@ function drawGame()
         love.graphics.setColor(1, 0, 0)
         love.graphics.setFont(resources.font_title)
         love.graphics.printf("GAME OVER", 0, love.graphics.getHeight() / 2, love.graphics.getWidth(), "center")
+        drawButton(lobby.buttons.revive)
     end
 
     -- Draw healthbar on the bottom of the screen
@@ -291,43 +360,58 @@ function love.keypressed(key)
         if key == "w" then
             network.player_direction = "up"
             network.player_speed.vy = -200
+            network.player_speed.vx = 0
         elseif key == "a" then
             network.player_direction = "left"
             network.player_speed.vx = -200
+            network.player_speed.vy = 0
         elseif key == "s" then
             network.player_direction = "down"
             network.player_speed.vy = 200
+            network.player_speed.vx = 0
         elseif key == "d" then
             network.player_direction = "right"
             network.player_speed.vx = 200
+            network.player_speed.vy = 0
         elseif key == "space" then
-            sendNetworkMessage({
-                action = "shoot",
-                player_id = network.player_id
-            })
+            if os.time() - network.last_bullet_fired_ts >= 1 then
+                network.last_bullet_fired_ts = os.time()
+                sendNetworkMessage({
+                    action = "shoot",
+                    player_id = network.player_id
+                }) 
+            end
         end
     end
 end
 
 function love.keyreleased(key)
     if network.is_alive then
-        if key == "w" then
-            network.player_last_direction = "up"
-            network.player_direction = ""
-            network.player_speed.vy = 0
-        elseif key == "a" then
-            network.player_last_direction = "left"
-            network.player_direction = ""
-            network.player_speed.vx = 0
-        elseif key == "s" then
-            network.player_last_direction = "down"
-            network.player_direction = ""
-            network.player_speed.vy = 0
-        elseif key == "d" then
-            network.player_last_direction = "right"
-            network.player_direction = ""
-            network.player_speed.vx = 0
-        end
+        checkUnreleasedKeys(key)
+    end
+end
+
+--Checks if should update the direction to the key that has been pressed before
+function checkUnreleasedKeys(key)
+    if love.keyboard.isDown('w') and key ~= 'w' then
+        network.player_direction = "up"
+        network.player_speed.vy = -200
+        network.player_speed.vx = 0
+    elseif love.keyboard.isDown('a') and key ~= 'a' then
+        network.player_direction = "left"
+        network.player_speed.vx = -200
+        network.player_speed.vy = 0
+    elseif love.keyboard.isDown('s') and key ~= 's' then
+        network.player_direction = "down"
+        network.player_speed.vy = 200
+        network.player_speed.vx = 0
+    elseif love.keyboard.isDown('d') and key ~= 'd' then
+        network.player_direction = "right"
+        network.player_speed.vx = 200
+        network.player_speed.vy = 0
+    else
+        network.player_speed.vx = 0
+        network.player_speed.vy = 0
     end
 end
 
@@ -417,6 +501,16 @@ function love.mousepressed(x, y, button)
                 player_id = network.player_id
             })
         end
+    elseif not network.is_alive then
+        if isPointInRect(x, y, lobby.buttons.revive) then
+            lobby.buttons.revive.state = "pressed"
+            resources.click_sound:play()
+            sendNetworkMessage({
+                action = "revive",
+                player_id = network.player_id
+            })
+            network.player_position = {x = math.random(100, 700), y = math.random(100, 500)}
+        end
     end
 end
 
@@ -428,6 +522,10 @@ function love.mousereleased(x, y, button)
             -- Start button
         elseif allPlayersReady() and isPointInRect(x, y, lobby.buttons.start) then
             lobby.buttons.start.state = "hover"
+        end
+    elseif not network.is_alive then
+        if isPointInRect(x, y, lobby.buttons.revive) then
+            lobby.buttons.revive.state = "hover"
         end
     end
 end
