@@ -502,6 +502,7 @@ function love.mousepressed(x, y, button)
                 action = "revive",
                 player_id = network.player_id
             })
+            network.player_position = {x = 100, y = 100}
         end
     end
 end

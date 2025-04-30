@@ -30,6 +30,8 @@ game_state = {
     'bullets': []         # list of active bullet dicts
 }
 
+game_started = False
+
 
 # ---------------------------------------
 # Utility: print full game state on event
@@ -107,7 +109,8 @@ async def handle_client(addr, data, transport):
                 'last_pong': time.time(),# last pong timestamp
                 'skin': 0
             }
-            game_state['waiting_room'].append(player_id)
+            if not game_started:
+                game_state['waiting_room'].append(player_id)
             print_state(f"Player '{player_id}' joined waiting room (hp=100)")
         else:
             # returning player: just update address and pong time
@@ -190,6 +193,8 @@ async def handle_client(addr, data, transport):
             game_state['waiting_room'].remove(player_id)
         # delete all player data
         del game_state['players'][player_id]
+        if len(game_state['players']) == 0:
+            game_started = False
         print_state(f"Player '{player_id}' left the game")
     
     elif action == 'revive':
