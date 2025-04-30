@@ -24,10 +24,32 @@ local resources = {
     lobby_music = love.audio.newSource("assets/tetanki_lobby.ogg", "stream"),
     game_music = love.audio.newSource("assets/tetanki_game.ogg", "stream"),
 
-    tank_up = love.graphics.newImage("assets/tank_up.png"),
-    tank_down = love.graphics.newImage("assets/tank_down.png"),
-    tank_left = love.graphics.newImage("assets/tank_left.png"),
-    tank_right = love.graphics.newImage("assets/tank_right.png"),
+    tank_up_1 = love.graphics.newImage("assets/1_tanks/tank_up.png"),
+    tank_down_1 = love.graphics.newImage("assets/1_tanks/tank_down.png"),
+    tank_left_1 = love.graphics.newImage("assets/1_tanks/tank_left.png"),
+    tank_right_1 = love.graphics.newImage("assets/1_tanks/tank_right.png"),
+
+    tank_up_2 = love.graphics.newImage("assets/2_tanks/tank_up.png"),
+    tank_down_2 = love.graphics.newImage("assets/2_tanks/tank_down.png"),
+    tank_left_2 = love.graphics.newImage("assets/2_tanks/tank_left.png"),
+    tank_right_2 = love.graphics.newImage("assets/2_tanks/tank_right.png"),
+
+    tank_up_3 = love.graphics.newImage("assets/3_tanks/tank_up.png"),
+    tank_down_3 = love.graphics.newImage("assets/3_tanks/tank_down.png"),
+    tank_left_3 = love.graphics.newImage("assets/3_tanks/tank_left.png"),
+    tank_right_3 = love.graphics.newImage("assets/3_tanks/tank_right.png"),
+
+    tank_up_4 = love.graphics.newImage("assets/4_tanks/tank_up.png"),
+    tank_down_4 = love.graphics.newImage("assets/4_tanks/tank_down.png"),
+    tank_left_4 = love.graphics.newImage("assets/4_tanks/tank_left.png"),
+    tank_right_4 = love.graphics.newImage("assets/4_tanks/tank_right.png"),
+}
+
+local skin = {
+    tank_up = resources.tank_up_3,
+    tank_down = resources.tank_down_3,
+    tank_left = resources.tank_left_3,
+    tank_right = resources.tank_right_3
 }
 
 local network = {
@@ -35,6 +57,7 @@ local network = {
     server_ip = "127.0.0.1",
     server_port = 9000,
     player_id = "player_" .. tostring(math.random(1000, 9999)),
+    player_skin = 0,
     player_direction = "",
     player_last_direction = "",
     player_position = { x = 0, y = 0 },
@@ -89,6 +112,32 @@ local function allPlayersReady()
     return count >= 2
 end
 
+function getSkin()
+    if network.player_skin ~= 0 then
+        if network.player_skin == 1 then
+            skin.tank_up = resources.tank_up_1
+            skin.tank_down = resources.tank_down_1
+            skin.tank_left = resources.tank_left_1
+            skin.tank_right = resources.tank_right_1
+        elseif network.player_skin == 2 then
+            skin.tank_up = resources.tank_up_2
+            skin.tank_down = resources.tank_down_2
+            skin.tank_left = resources.tank_left_2
+            skin.tank_right = resources.tank_right_2
+        elseif network.player_skin == 3 then
+            skin.tank_up = resources.tank_up_3
+            skin.tank_down = resources.tank_down_3
+            skin.tank_left = resources.tank_left_3
+            skin.tank_right = resources.tank_right_3
+        elseif network.player_skin == 4 then
+            skin.tank_up = resources.tank_up_4
+            skin.tank_down = resources.tank_down_4
+            skin.tank_left = resources.tank_left_4
+            skin.tank_right = resources.tank_right_4
+        end
+    end
+end
+
 function connectToServer()
     network.udp:settimeout(0)
     network.udp:setpeername(network.server_ip, network.server_port)
@@ -126,6 +175,8 @@ function love.update(dt)
         new_position.y = network.player_position.y + (network.player_speed.vy * dt)
         network.player_position = new_position
     end
+
+    getSkin()
 
 
     -- this is spam, but lets think it is OK :)
@@ -165,6 +216,7 @@ function handleNetworkMessage(msg)
         -- Check if we are in players, but the waiting_room is empty - this means game started
         if game_state.players[network.player_id] and next(game_state.waiting_room) == nil then
             lobby.show_lobby = false
+            network.player_skin = game_state.players.skin
             if currentMusic ~= resources.game_music then
                 network.player_position = game_state.players[network.player_id].position
                 currentMusic:stop()
@@ -210,13 +262,13 @@ function drawTank(x, y, hp, id, direction)
         love.graphics.setColor(1, 1, 1)
     end
 
-    local img = resources.tank_up
+    local img = skin.tank_up
     if direction == "down" then
-        img = resources.tank_down
+        img = skin.tank_down
     elseif direction == "left" then
-        img = resources.tank_left
+        img = skin.tank_left
     elseif direction == "right" then
-        img = resources.tank_right
+        img = skin.tank_right
     end
     -- Tank image is 150x150, but the tank is just 50x50 (approx). So we need to draw it at the center of the tank.
     love.graphics.draw(img, x - 25, y - 25)
@@ -242,13 +294,13 @@ function drawPlayer()
         love.graphics.setColor(1, 0.1, 0.1)
     end
 
-    local img = resources.tank_up
+    local img = skin.tank_up
     if network.player_direction == "down" then
-        img = resources.tank_down
+        img = skin.tank_down
     elseif network.player_direction == "left" then
-        img = resources.tank_left
+        img = skin.tank_left
     elseif network.player_direction == "right" then
-        img = resources.tank_right
+        img = skin.tank_right
     end
     love.graphics.draw(img, network.player_position.x - 25, network.player_position.y - 25)
 end

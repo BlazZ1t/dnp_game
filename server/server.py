@@ -133,7 +133,8 @@ async def handle_client(addr, data, transport):
         p.update({
             'ready': True,
             'position': {'x': 100, 'y': 100},
-            'direction': 'up'
+            'direction': 'up',
+            'skin': random.randint(1, 4)
         })
         print_state(f"Player '{player_id}' set ready")
 
