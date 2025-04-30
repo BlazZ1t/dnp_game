@@ -202,12 +202,12 @@ end
 -- Game related
 
 function drawTank(x, y, hp, id, direction)
-    -- Draw tank
 
-    if hp == 0 then
-        love.graphics.setColor(0.5, 0, 0)
+    -- Draw tank
+    if (network.is_alive) then
+        love.graphics.setColor(1.3, 1, 1)
     else
-        love.graphics.setColor(1, 1, 0)
+        love.graphics.setColor(0.5, 0, 0)
     end
 
     local img = resources.tank_up
@@ -219,7 +219,7 @@ function drawTank(x, y, hp, id, direction)
         img = resources.tank_right
     end
     -- Tank image is 150x150, but the tank is just 50x50 (approx). So we need to draw it at the center of the tank.
-    love.graphics.draw(img, x - 75, y - 75)
+    love.graphics.draw(img, x - 25, y - 25)
 
     -- Print player ID on top of the tank
     love.graphics.setFont(resources.font_tank)
@@ -236,8 +236,8 @@ end
 
 function drawPlayer()
     -- Draw player tank
-    if network.is_alive then
-        love.graphics.setColor(0, 1, 0)
+    if (network.is_alive) then
+        love.graphics.setColor(1, 1, 1)
     else
         love.graphics.setColor(0.5, 0, 0)
     end
@@ -250,7 +250,7 @@ function drawPlayer()
     elseif network.player_direction == "right" then
         img = resources.tank_right
     end
-    love.graphics.draw(img, network.player_position.x - 75, network.player_position.y - 75)
+    love.graphics.draw(img, network.player_position.x - 25, network.player_position.y - 25)
 end
 
 function drawGame()
