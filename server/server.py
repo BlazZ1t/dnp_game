@@ -3,6 +3,7 @@ import json           # for JSON serialization/deserialization
 import time           # for timestamps and sleeping
 import math           # for distance calculation (hit detection)
 import random         # for assignment of player positions
+import uuid           # for generating unique room IDs
 
 # ----------------------------------------
 # World parameters (game map and bullets)
@@ -22,16 +23,18 @@ PING_INTERVAL = 10        # how often server sends ping messages (seconds)
 PONG_TIMEOUT  = 30        # how long to wait for a pong before disconnecting (seconds)
 
 
-rooms = {}
+rooms = {}              # room_id -> room_info dict (stores information about each room)
+name_to_id = {}         # room_name -> room_id (maps room names to their unique room ID)
 
 temp_players = {}         # dict: player_id -> player info dict. Is here to handle pongs to the clients who are not yet in a room but need to be pinged
 
-def create_room():
-    return {
-    'waiting_room': [],   # list of player_id strings waiting to start
-    'players': {},        # dict: player_id -> player info dict
-    'bullets': []         # list of active bullet dicts
-}
+def create_room(room_name=None):
+     return {
+    'name': room_name,     # the human-readable name of the room (could be set by the player when creating the room)
+    'waiting_room': [],    # list of player_ids who are waiting in the room's lobby
+    'players': {},         # player_id -> player info (stores data like position, health, etc.)
+    'bullets': []          # list of active bullets (bullets in motion during gameplay)
+    }
 
 
 # ---------------------------------------
@@ -69,12 +72,39 @@ async def broadcast_state(transport, room_id):
 # Send list of the available rooms to the user
 # --------------------------------------------
 async def send_room_list(transport, addr):
+     # Construct a message with a list of available rooms, including both room ID and name for clarity
     message = {
         "action": "rooms_list",
-        "rooms": list(rooms.keys())
+        "rooms": [
+            {"room_id": rid, "room_name": info['name']}  # each room contains its unique ID and name
+            for rid, info in rooms.items()
+        ]
     }
     data = json.dumps(message).encode('utf-8')
     transport.sendto(data, addr)
+
+
+# -----------------------------------------------------------------------------
+# broadcast the current rooms list to every connected client
+# -----------------------------------------------------------------------------
+async def broadcast_room_list_to_all(transport):
+    """
+    Send an updated 'rooms_list' message to:
+      1) every client in the lobby (temp_players), and
+      2) every client already inside any room (rooms[*]['players']).
+    This ensures everyone sees room creations or deletions immediately.
+    """
+    # 1) Clients waiting in lobby
+    for pid, info in temp_players.items():
+        await send_room_list(transport, info['address'])
+
+    # 2) Clients already in rooms
+    for rid, state in rooms.items():
+        for p_id, p_info in state['players'].items():
+            await send_room_list(transport, p_info['address'])
+
+
+
 
 
 # ---------------------------------------------------
@@ -90,41 +120,225 @@ async def handle_client(addr, data, transport):
     except json.JSONDecodeError:
         return  # ignore non-JSON
 
-    action    = msg.get('action')    # what the client wants to do
-    player_id = msg.get('player_id') # unique string identifier
-    room_id = msg.get('room_id')     # room where client is
+    action    = msg.get('action')       # the action that the client wants to perform
+    player_id = msg.get('player_id')    # unique identifier for the player
+    room_id   = msg.get('room_id')      # the ID of the room the client wants to join or is in
+    room_name = msg.get('room_name')    # the room name (used for create_room and join_room_by_name actions)
 
     # require both fields
     if not action or not player_id:
         return
-    
-    # If client didn't provide its room, provide client with the list of rooms
-    if not room_id:
-        print(f"Got user with no room_id: {player_id}")
-        if player_id not in temp_players:
-            temp_players[player_id] = {
-                'ready': False,         # has not signaled ready yet
-                'position': None,       # will be set on ready
-                'direction': None,      # will be set on ready
-                'hp': 100,              # starting health points
-                'address': addr,        # UDP address tuple
-                'last_pong': time.time()# last pong timestamp
+
+    if not room_id and action not in (
+        'list_rooms', 'create_room',
+        'join_room', 'join_room_by_name', 'join_room_by_id',
+        'delete_room_by_name', 'delete_room_by_id'):
+        # find a room where player placed
+        for rid, state in rooms.items():
+            if player_id in state['players']:
+                room_id = rid
+                break
+
+    #
+    # ========== New Endpoint: list_rooms ==========
+    # This endpoint returns a list of all available rooms with their IDs and names.
+    #
+    if action == 'list_rooms':
+        await send_room_list(transport, addr)  # Respond with the list of rooms
+        return
+
+    #
+    # ========== New Endpoint: create_room ==========
+    # This endpoint allows players to create a new room. The player provides a room_name, and a unique room_id is generated.
+    #
+    if action == 'create_room':
+        if not room_name:
+            # If no room name is provided, respond with an error
+            err = {'action':'create_room_response',
+                   'success': False,
+                   'error': 'room_name is required'}
+            transport.sendto(json.dumps(err).encode(), addr)
+            return
+        if room_name in name_to_id:
+            # If the room name is already taken, respond with an error
+            err = {'action':'create_room_response',
+                   'success': False,
+                   'error': 'room_name already exists'}
+            transport.sendto(json.dumps(err).encode(), addr)
+            return
+        # Generate a unique room ID
+        while True:
+            new_id = uuid.uuid4().hex  # Using UUID for generating unique room IDs
+            if new_id not in rooms:
+                break
+        # Create the room with the provided name and the unique ID
+        rooms[new_id] = create_room(room_name)
+        name_to_id[room_name] = new_id  # Map the room name to the room ID
+        # Send success response with the room ID and name
+        resp = {'action':'create_room_response',
+                'success': True,
+                'room_id': new_id,
+                'room_name': room_name}
+        transport.sendto(json.dumps(resp).encode(), addr)
+        await broadcast_room_list_to_all(transport)
+        return
+
+    #
+    # ========== New Endpoint: join_room_by_name ==========
+    # This endpoint allows players to join a room by its name. The server maps the name to a room ID.
+    #
+    if action == 'join_room_by_name':
+        if not room_name or room_name not in name_to_id:
+            # If the room name is not found, respond with an error
+            err = {'action':'join_room_response',
+                   'success': False,
+                   'error': 'room_name not found'}
+            transport.sendto(json.dumps(err).encode(), addr)
+            return
+        room_id = name_to_id[room_name]  # Retrieve the room ID using the room name
+        action = 'join_room'  # Proceed with the join_room action
+
+    #
+    # ========== New Endpoint: join_room_by_id ==========
+    # This endpoint allows players to join a room using its unique ID.
+    #
+    if action == 'join_room_by_id':
+        if not room_id or room_id not in rooms:
+            # If the room ID is not found, respond with an error
+            err = {'action':'join_room_response',
+                   'success': False,
+                   'error': 'room_id not found'}
+            transport.sendto(json.dumps(err).encode(), addr)
+            return
+        action = 'join_room'  # Proceed with the join_room action
+
+    #
+    # ========== New Endpoint: delete_room_by_id ==========
+    # Allows deleting a room by its unique ID, unless it's the last room.
+    #
+    if action == 'delete_room_by_id':
+        # If there's only one room left, we refuse to delete it
+        if len(rooms) <= 1:
+            err = {
+                'action': 'delete_room_response',
+                'success': False,
+                'error': 'cannot delete the last remaining room'
             }
+            transport.sendto(json.dumps(err).encode(), addr)
+            return
+        # Make sure the room_id exists
+        if not room_id or room_id not in rooms:
+            err = {
+                'action': 'delete_room_response',
+                'success': False,
+                'error': 'room_id not found'
+            }
+            transport.sendto(json.dumps(err).encode(), addr)
+            return
+        # Remove the room from both mappings
+        removed_name = rooms[room_id]['name']
+        del rooms[room_id]
+        # Clean up the name->id map as well
+        if removed_name in name_to_id:
+            del name_to_id[removed_name]
+        # Send success response
+        resp = {
+            'action': 'delete_room_response',
+            'success': True,
+            'room_id': room_id,
+            'room_name': removed_name
+        }
+        transport.sendto(json.dumps(resp).encode(), addr)
+        await broadcast_room_list_to_all(transport)
+        return
+
+    #
+    # ========== New Endpoint: delete_room_by_name ==========
+    # Allows deleting a room by its human-readable name, unless it's the last room.
+    #
+    if action == 'delete_room_by_name':
+        # If there's only one room left, we refuse to delete it
+        if len(rooms) <= 1:
+            err = {
+                'action': 'delete_room_response',
+                'success': False,
+                'error': 'cannot delete the last remaining room'
+            }
+            transport.sendto(json.dumps(err).encode(), addr)
+            return
+        # Make sure the room_name exists
+        if not room_name or room_name not in name_to_id:
+            err = {
+                'action': 'delete_room_response',
+                'success': False,
+                'error': 'room_name not found'
+            }
+            transport.sendto(json.dumps(err).encode(), addr)
+            return
+        # Locate the room_id, then remove from both maps
+        rid = name_to_id[room_name]
+        del rooms[rid]
+        del name_to_id[room_name]
+        # Send success response
+        resp = {
+            'action': 'delete_room_response',
+            'success': True,
+            'room_id': rid,
+            'room_name': room_name
+        }
+        transport.sendto(json.dumps(resp).encode(), addr)
+        return
+
+
+
+    #
+    # ========== Auto-join (Fallback) ==========
+    # If the client sends a join_room request without a room ID, automatically place them in the first available room
+    # or create a new room if there are no existing rooms.
+    #
+    if action == 'join_room' and not room_id:
+        if rooms:
+            # Automatically join the first room in the list (first created room)
+            room_id = next(iter(rooms))
+        else:
+            # If there are no rooms, create a new room with a unique ID
+            while True:
+                default_id = uuid.uuid4().hex  # Generate a unique room ID
+                if default_id not in rooms:
+                    break
+            default_name = default_id  # Use the room ID as the default room name
+            rooms[default_id] = create_room(default_name)  # Create the new room
+            name_to_id[default_name] = default_id  # Map the default name to the room ID
+            room_id = default_id  # Assign the generated room ID
+
+    # If room_id is still not set, the client is not in any room yet. Send the list of rooms
+    if not room_id:
+        # The player is not in any room yet; handle ping/pong and show the room list
         if action == 'pong':
             if player_id in temp_players:
-                temp_players[player_id]['last_pong'] = time.time
+                temp_players[player_id]['last_pong'] = time.time()  # Update ping time
         else:
-            print(f'Got action from {player_id} who is not in the room for now')
+            # The player is not in a room yet, temporarily store them and send the list of available rooms
+            if player_id not in temp_players:
+                temp_players[player_id] = {
+                    'ready': False,
+                    'position': None, 'direction': None,
+                    'hp': 100, 'address': addr,
+                    'last_pong': time.time()
+                }
         await send_room_list(transport, addr)
         return
     else:
-        del temp_players[player_id]
+        # If the player was previously in temp_players, remove them from temp storage since they have joined a room
+        temp_players.pop(player_id, None)
     
     # ----------------------------
     # Create room if there is none
     # ----------------------------
     if room_id not in rooms:
-        rooms[room_id] = create_room()
+        # Legacy support: if the room ID does not exist, create a room with the ID as the room name
+        rooms[room_id] = create_room(room_name=room_id)  # Use the room ID as the room name
+        name_to_id[room_id] = room_id  # Map the room name to its unique ID
 
     game_state = rooms[room_id]
 
@@ -141,6 +355,18 @@ async def handle_client(addr, data, transport):
     # Handle new player joining the waiting room
     # -------------------------------------
     if action == 'join_room':
+        
+        #Remove this player from any previous room before joining
+        for old_rid, gs in rooms.items():
+            # If they were in the players dict, drop them
+            if player_id in gs['players']:
+                del gs['players'][player_id]
+            # If they were still in the waiting_room list, remove them
+            if player_id in gs['waiting_room']:
+                gs['waiting_room'].remove(player_id)
+            # Notify the remaining players in that old room
+            if old_rid != room_id:
+                await broadcast_state(transport, old_rid)
         # if completely new player
         if player_id not in game_state['players']:
             # initialize player info
@@ -160,9 +386,26 @@ async def handle_client(addr, data, transport):
             p['address']   = addr
             p['last_pong'] = time.time()
 
-        # broadcast new state immediately
+        # --------------------------------------------------------------------------------
+        # Send explicit join_room_response to the requesting client
+        # --------------------------------------------------------------------------------
+        # We send this before broadcasting the full state so the client immediately
+        # knows which room it has joined and whether the join succeeded.
+        resp = {
+            'action': 'join_room_response',
+            'success': True,
+            'room_id':   room_id,             # Unique identifier for this room
+            'room_name': game_state['name']   # Human-readable name of this room
+        }
+        transport.sendto(json.dumps(resp).encode('utf-8'), addr)
+
+        # --------------------------------------------------------------------------------
+        # Broadcast updated state to all players in the room
+        # --------------------------------------------------------------------------------
+        # After confirming to the new player, send the complete game state
+        # (player lists, ready flags, etc.) to everyone so all clients stay in sync.
         await broadcast_state(transport, room_id)
-        return  # skip further handling
+        return  # Exit early to prevent further action handling for this packet  :contentReference[oaicite:0]{index=0}&#8203;:contentReference[oaicite:1]{index=1}
 
     # ------------------------------------
     # All other actions require a known player
