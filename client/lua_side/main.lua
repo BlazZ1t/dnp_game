@@ -7,6 +7,7 @@ local game_state = {
     waiting_room = {},
     players = {},
     bullets = {},
+    game_started = false,
 }
 
 
@@ -218,7 +219,7 @@ function handleNetworkMessage(msg)
         -- Print "Update state"
         game_state = msg.game_state
         -- Check if we are in players, but the waiting_room is empty - this means game started
-        if game_state.players[network.player_id] and next(game_state.waiting_room) == nil then
+        if game_state.game_started then
             lobby.show_lobby = false
             if currentMusic ~= resources.game_music then
                 network.player_skin = game_state.players[network.player_id].skin
