@@ -372,10 +372,13 @@ function love.keypressed(key)
             network.player_speed.vx = 200
             network.player_speed.vy = 0
         elseif key == "space" then
-            sendNetworkMessage({
-                action = "shoot",
-                player_id = network.player_id
-            })
+            if network.last_bullet_fired_ts - os.time() >= 1 then
+                network.last_bullet_fired_ts = os.time()
+                sendNetworkMessage({
+                    action = "shoot",
+                    player_id = network.player_id
+                }) 
+            end
         end
     end
 end
