@@ -101,12 +101,12 @@ async def handle_client(addr, data, transport):
             # initialize player info
             game_state['players'][player_id] = {
                 'ready': False,          # has not signaled ready yet
-                'position': {'x': 100, 'y': 100},        # will be set on ready
+                'position': {'x': random.randint(100, 700), 'y': random.randint(100, 500)},        # will be set on ready
                 'direction': "up",       # will be set on ready
                 'hp': 100,               # starting health points
                 'address': addr,         # UDP address tuple
                 'last_pong': time.time(),# last pong timestamp
-                'skin': 0
+                'skin': random.randint(1, 4)
             }
             if not game_state['game_started']:
                 game_state['waiting_room'].append(player_id)
@@ -137,9 +137,6 @@ async def handle_client(addr, data, transport):
         # mark ready and give initial spawn position/direction
         p.update({
             'ready': True,
-            'position': {'x': 100, 'y': 100},
-            'direction': 'up',
-            'skin': random.randint(1, 4)
         })
         print_state(f"Player '{player_id}' set ready")
 
