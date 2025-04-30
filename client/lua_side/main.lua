@@ -14,7 +14,7 @@ local resources = {
     button_normal = love.graphics.newImage("assets/button_rectangle_depth_flat.png"),
     button_hover = love.graphics.newImage("assets/button_rectangle_depth_flat.png"),
     button_pressed = love.graphics.newImage("assets/button_rectangle_flat.png"),
-    -- background = love.graphics.newImage("lobby_bg.jpg"),
+    background = love.graphics.newImage("assets/game_background.png"),
     font_title = love.graphics.newFont("assets/Kenney Future.ttf", 60),
     font_heading = love.graphics.newFont("assets/Kenney Future.ttf", 40),
     font_body = love.graphics.newFont("assets/Kenney Future.ttf", 20),
@@ -314,6 +314,8 @@ function drawPlayer(skin_id)
 end
 
 function drawGame()
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.draw(resources.background, 0, 0)
     for player_id, player in pairs(game_state.players) do
         if player_id == network.player_id then
             drawPlayer(network.player_skin)
