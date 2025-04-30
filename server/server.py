@@ -45,6 +45,7 @@ def print_state(event: str):
     print(f"\n[{timestamp}] {event}")                         # header line
     # pretty-print the game_state JSON for debugging
     print(json.dumps(rooms, indent=2, ensure_ascii=False), "\n")
+    print(json.dumps(temp_players, indent=2, ensure_ascii=False), "\n")
 
 
 # -----------------------------------------------------
@@ -99,6 +100,7 @@ async def handle_client(addr, data, transport):
     
     # If client didn't provide its room, provide client with the list of rooms
     if not room_id:
+        print(f"Got user with no room_id: {player_id}")
         if player_id not in temp_players:
             temp_players[player_id] = {
                 'ready': False,         # has not signaled ready yet
@@ -111,6 +113,8 @@ async def handle_client(addr, data, transport):
         if action == 'pong':
             if player_id in temp_players:
                 temp_players[player_id]['last_pong'] = time.time
+        else:
+            print(f'Got action from {player_id} who is not in the room for now')
         await send_room_list(transport, addr)
         return
     else:
@@ -350,14 +354,16 @@ async def ping_task(transport):
                     # delete player data
                     del game_state['players'][pid]
                     print_state(f"Player '{pid}' disconnected due to timeout")
+        print(temp_players)
         for pid, info in list(temp_players.items()):
             # ping players who are not yet in a room
+            print(f"Ping {pid} with no room at {info['address']}")
             transport.sendto(ping_msg, info['address'])
-            # remove inactive players
-            cutoff = now - PONG_TIMEOUT
-            for pid, info in list(temp_players.items()):
-                if info['last_pong'] < cutoff:
-                    del temp_players[pid]
+        # remove inactive players
+        cutoff = now - PONG_TIMEOUT
+        for pid, info in list(temp_players.items()):
+            if info['last_pong'] < cutoff:
+                del temp_players[pid]
 
         await asyncio.sleep(PING_INTERVAL)
 
