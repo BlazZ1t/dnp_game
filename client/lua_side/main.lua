@@ -1,5 +1,6 @@
 local socket = require "socket"
 local json = require "json" -- You'll need to add a JSON library
+local os = require "os"
 
 math.randomseed(os.time())
 
@@ -67,6 +68,7 @@ local network = {
     last_ping = 0,
     last_move = 0,
     last_sent_position = { x = 0, y = 0 },
+    last_bullet_fired_ts = os.time()
 }
 
 local lobby = {
@@ -372,7 +374,7 @@ function love.keypressed(key)
             network.player_speed.vx = 200
             network.player_speed.vy = 0
         elseif key == "space" then
-            if network.last_bullet_fired_ts - os.time() >= 1 then
+            if os.time() - network.last_bullet_fired_ts >= 1 then
                 network.last_bullet_fired_ts = os.time()
                 sendNetworkMessage({
                     action = "shoot",
