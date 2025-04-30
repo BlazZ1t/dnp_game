@@ -10,7 +10,7 @@ import random         # for assignment of player positions
 MAP_WIDTH       = 800     # map width in pixels (x from 0 to MAP_WIDTH)
 MAP_HEIGHT      = 600     # map height in pixels (y from 0 to MAP_HEIGHT)
 BULLET_LIFETIME = 3.0     # how long a bullet lives (seconds) before disappearing
-BULLET_SPEED    = 300     # bullet speed (pixels per second)
+BULLET_SPEED    = 600     # bullet speed (pixels per second)
 PLAYER_RADIUS   = 20      # approximate radius of a tank (for hit detection)
 BULLET_DAMAGE   = 25      # how much HP a bullet removes on hit
 

@@ -164,7 +164,7 @@ function sendNetworkMessage(msg)
 end
 
 function love.load()
-    love.window.setTitle("Tank Battle - Lobby")
+    love.window.setTitle("Tetanki - Lobby")
     love.window.setMode(800, 600)
     resources.lobby_music:setLooping(true)
     resources.game_music:setLooping(true)
@@ -222,6 +222,7 @@ function handleNetworkMessage(msg)
         if game_state.game_started then
             lobby.show_lobby = false
             if currentMusic ~= resources.game_music then
+                love.window.setTitle('Tetanki - FIGHT!')
                 network.player_skin = game_state.players[network.player_id].skin
                 network.player_position = game_state.players[network.player_id].position
                 currentMusic:stop()
