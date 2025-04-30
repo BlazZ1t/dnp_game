@@ -204,10 +204,10 @@ end
 function drawTank(x, y, hp, id, direction)
 
     -- Draw tank
-    if (network.is_alive) then
-        love.graphics.setColor(1.3, 1, 1)
+    if hp == 0 then
+        love.graphics.setColor(1, 0.1, 0.1)
     else
-        love.graphics.setColor(0.5, 0, 0)
+        love.graphics.setColor(1, 1, 1)
     end
 
     local img = resources.tank_up
@@ -239,7 +239,7 @@ function drawPlayer()
     if (network.is_alive) then
         love.graphics.setColor(1, 1, 1)
     else
-        love.graphics.setColor(0.5, 0, 0)
+        love.graphics.setColor(1, 0.1, 0.1)
     end
 
     local img = resources.tank_up
