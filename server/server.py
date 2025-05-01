@@ -10,7 +10,7 @@ import random         # for assignment of player positions
 MAP_WIDTH       = 800     # map width in pixels (x from 0 to MAP_WIDTH)
 MAP_HEIGHT      = 600     # map height in pixels (y from 0 to MAP_HEIGHT)
 BULLET_LIFETIME = 3.0     # how long a bullet lives (seconds) before disappearing
-BULLET_SPEED    = 600     # bullet speed (pixels per second)
+BULLET_SPEED    = 700     # bullet speed (pixels per second)
 PLAYER_RADIUS   = 20      # approximate radius of a tank (for hit detection)
 BULLET_DAMAGE   = 25      # how much HP a bullet removes on hit
 
@@ -21,16 +21,24 @@ TICK_RATE     = 60        # how many game updates per second
 PING_INTERVAL = 10        # how often server sends ping messages (seconds)
 PONG_TIMEOUT  = 30        # how long to wait for a pong before disconnecting (seconds)
 
-# ---------------------------
-# Central game state structure
-# ---------------------------
-game_state = {
-    'waiting_room': [],   # list of player_id strings waiting to start
-    'players': {},        # dict: player_id -> player info dict
-    'bullets': [],        # list of active bullet dicts
-    'game_started': False
-}
 
+# ----------------------------------------
+# Pre-created rooms (no dynamic create/delete)
+# ----------------------------------------
+def create_room(name):
+    return {
+        'name': name,
+        'waiting_room': [],
+        'players': {},
+        'bullets': [],
+        'game_started': False
+    }
+
+rooms = {
+    'room_1': create_room('room_1'),
+    'room_2': create_room('room_2'),
+    'room_3': create_room('room_3'),
+}
 
 # ---------------------------------------
 # Utility: print full game state on event
@@ -42,24 +50,24 @@ def print_state(event: str):
     timestamp = time.strftime('%H:%M:%S', time.localtime())  # human-readable time
     print(f"\n[{timestamp}] {event}")                         # header line
     # pretty-print the game_state JSON for debugging
-    print(json.dumps(game_state, indent=2, ensure_ascii=False), "\n")
+    print(json.dumps(rooms, indent=2, ensure_ascii=False), "\n")
 
 
 # -----------------------------------------------------
 # Broadcast the full game state to all connected players
 # -----------------------------------------------------
-async def broadcast_state(transport):
+async def broadcast_state(transport, room_id):
     """
     Send an 'update_state' message containing game_state to every player.
     """
     message = {
         'action': 'update_state',
-        'game_state': game_state,
+        'game_state': rooms[room_id],
         'timestamp': time.time(),
     }
     data = json.dumps(message).encode('utf-8')  # encode to bytes
     # send the update to each player's stored address
-    for pid, info in list(game_state['players'].items()):
+    for pid, info in list(rooms[room_id]['players'].items()):
         transport.sendto(data, info['address'])
 
 
@@ -76,53 +84,105 @@ async def handle_client(addr, data, transport):
     except json.JSONDecodeError:
         return  # ignore non-JSON
 
-    action    = msg.get('action')    # what the client wants to do
-    player_id = msg.get('player_id') # unique string identifier
+    action    = msg.get('action')       # the action that the client wants to perform
+    player_id = msg.get('player_id')    # unique identifier for the player
+    room_name = msg.get('room_name')    # the room name (used for create_room and join_room_by_name actions)
 
     # require both fields
     if not action or not player_id:
         return
 
+    # ------------------------------------------------------------
+    # Figure out which static room (room_1/2/3) this player is in
+    # ------------------------------------------------------------
+    current_room = None
+    game_state   = None
+    for rn, st in rooms.items():
+        if player_id in st['players']:
+            current_room = rn
+            game_state   = st
+            break
+
     # -------------------
     # Handle 'pong' reply
     # -------------------
     if action == 'pong':
-        # update last-seen timestamp if player exists
-        if player_id in game_state['players']:
+        # only update if they’re already in a room
+        if game_state:
             game_state['players'][player_id]['last_pong'] = time.time()
-        return  # pong is not broadcast
+        return  # no broadcast for pong    
+
+    # ----------------------------------------------------------------
+    # Determine which static room (room_1/2/3) this player is in, if any
+    # ----------------------------------------------------------------
+    current_room = None
+    game_state   = None
+    for rn, st in rooms.items():
+        if player_id in st['players']:
+            current_room = rn
+            game_state   = st
+            break
+
+    # For any action _other than_ join_room, we need a valid current_room
+    if action != 'join_room':
+        if not current_room:
+            return
+        # game_state was already set above
 
     # -------------------------------------
     # Handle new player joining the waiting room
     # -------------------------------------
     if action == 'join_room':
-        # if completely new player
-        if player_id not in game_state['players']:
-            # initialize player info
-            game_state['players'][player_id] = {
-                'ready': False,          # has not signaled ready yet
-                'position': {'x': random.randint(100, 700), 'y': random.randint(100, 500)},        # will be set on ready
-                'direction': "up",       # will be set on ready
-                'hp': 100,               # starting health points
-                'address': addr,         # UDP address tuple
-                'last_pong': time.time(),# last pong timestamp
+        # 1) Validate room_name
+        room_name = msg.get('room_name')
+        if not room_name or room_name not in rooms:
+            transport.sendto(json.dumps({
+                'action': 'join_room_response',
+                'success': False,
+                'error': 'invalid or missing room_name'
+            }).encode('utf-8'), addr)
+            return
+
+        # 2) Remove from any previous room
+        for old_name, old_room in rooms.items():
+            if player_id in old_room['players']:
+                del old_room['players'][player_id]
+            if player_id in old_room['waiting_room']:
+                old_room['waiting_room'].remove(player_id)
+            if old_name != room_name:
+                await broadcast_state(transport, old_name)
+
+        # 3) Add (or reconnect) into the new room
+        new_room = rooms[room_name]
+        if player_id not in new_room['players']:
+            new_room['players'][player_id] = {
+                'ready': False,
+                'position': {'x': random.randint(100, 700), 'y': random.randint(100, 500)},
+                'direction': "up",
+                'hp': 100,
+                'address': addr,
+                'last_pong': time.time(),
                 'skin': random.randint(1, 4)
             }
-            if not game_state['game_started']:
-                game_state['waiting_room'].append(player_id)
+            if not new_room['game_started']:
+                new_room['waiting_room'].append(player_id)
             else:
-                game_state['players'][player_id]['ready'] = True
-            print_state(f"Player '{player_id}' joined waiting room (hp=100)")
+                new_room['players'][player_id]['ready'] = True
+            print_state(f"Player '{player_id}' joined {room_name}")
         else:
-            # returning player: just update address and pong time
-            p = game_state['players'][player_id]
+            # reconnecting
+            p = new_room['players'][player_id]
             p['address']   = addr
             p['last_pong'] = time.time()
 
-        # broadcast new state immediately
-        await broadcast_state(transport)
-        return  # skip further handling
-
+        # 4) Confirm join and broadcast new state
+        transport.sendto(json.dumps({
+            'action': 'join_room_response',
+            'success': True,
+            'room_name': room_name
+        }).encode('utf-8'), addr)
+        await broadcast_state(transport, room_name)
+        return
     # ------------------------------------
     # All other actions require a known player
     # ------------------------------------
@@ -208,13 +268,13 @@ async def handle_client(addr, data, transport):
     elif action == 'chat':
         text = msg.get('message', '')
         # just log chat on server
-        print(f"[chat] {player_id}: {text}")
+        print(f"[chat] {player_id}@{current_room}: {text}")
 
     # ----------------------------------
     # After handling any of the above,
     # broadcast updated game state
     # ----------------------------------
-    await broadcast_state(transport)
+    await broadcast_state(transport, current_room)
 
 
 # -------------------------------------------------------
@@ -229,58 +289,60 @@ async def game_tick(transport):
     while True:
         now = time.time()            # current time for lifetime checks
         new_bullets = []             # rebuild list of bullets that survive
+        for room_id, game_state in rooms.items():
 
-        # process each active bullet
-        for b in game_state['bullets']:
-            # remove bullet if its lifetime expired
-            if now - b['created'] > BULLET_LIFETIME:
-                continue
-
-            # calculate movement for this tick
-            distance = BULLET_SPEED * interval
-            dx = dy = 0
-            if   b['direction'] == 'up':    dy = -distance
-            elif b['direction'] == 'down':  dy =  distance
-            elif b['direction'] == 'left':  dx = -distance
-            else:                            dx =  distance
-
-            # update bullet position
-            b['position']['x'] += dx
-            b['position']['y'] += dy
-
-            x, y = b['position']['x'], b['position']['y']
-
-            # discard if outside map
-            if not (0 <= x <= MAP_WIDTH and 0 <= y <= MAP_HEIGHT):
-                continue
-
-            # check collision with any player (excluding the shooter)
-            hit = False
-            for pid, info in game_state['players'].items():
-                # skip shooter, dead players, or unspawned
-                if pid == b['player_id'] or info['hp'] <= 0 or not info['position']:
+            # process each active bullet
+            for b in game_state['bullets']:
+                # remove bullet if its lifetime expired
+                if now - b['created'] > BULLET_LIFETIME:
                     continue
-                px, py = info['position']['x'], info['position']['y']
-                # if distance <= PLAYER_RADIUS => hit
-                if math.hypot(px - x, py - y) <= PLAYER_RADIUS:
-                    # apply damage
-                    info['hp'] -= BULLET_DAMAGE
-                    hit = True
-                    if info['hp'] <= 0:
-                        print_state(f"Player '{pid}' was destroyed by '{b['player_id']}'")
-                    else:
-                        print_state(f"Player '{pid}' took {BULLET_DAMAGE} damage (hp={info['hp']})")
-                    break  # bullet stops on first hit
 
-            # if not hit anyone, keep bullet alive
-            if not hit:
-                new_bullets.append(b)
+                # calculate movement for this tick
+                distance = BULLET_SPEED * interval
+                dx = dy = 0
+                if   b['direction'] == 'up':    dy = -distance
+                elif b['direction'] == 'down':  dy =  distance
+                elif b['direction'] == 'left':  dx = -distance
+                else:                            dx =  distance
 
-        # replace old bullet list
-        game_state['bullets'] = new_bullets
+                # update bullet position
+                b['position']['x'] += dx
+                b['position']['y'] += dy
 
-        # broadcast updated bullets (and any hp changes)
-        await broadcast_state(transport)
+                x, y = b['position']['x'], b['position']['y']
+
+                # discard if outside map
+                if not (0 <= x <= MAP_WIDTH and 0 <= y <= MAP_HEIGHT):
+                    continue
+
+                # check collision with any player (excluding the shooter)
+                hit = False
+                for pid, info in game_state['players'].items():
+                    # skip shooter, dead players, or unspawned
+                    if pid == b['player_id'] or info['hp'] <= 0 or not info['position']:
+                        continue
+                    px, py = info['position']['x'], info['position']['y']
+                    # if distance <= PLAYER_RADIUS => hit
+                    if math.hypot(px - x, py - y) <= PLAYER_RADIUS:
+                        # apply damage
+                        info['hp'] -= BULLET_DAMAGE
+                        hit = True
+                        if info['hp'] <= 0:
+                            print_state(f"Player '{pid}' was destroyed by '{b['player_id']}'")
+                        else:
+                            print_state(f"Player '{pid}' took {BULLET_DAMAGE} damage (hp={info['hp']})")
+                        break  # bullet stops on first hit
+
+                # if not hit anyone, keep bullet alive
+                if not hit:
+                    new_bullets.append(b)
+
+            # replace old bullet list
+            game_state['bullets'] = new_bullets.copy()
+            new_bullets.clear()
+
+            # broadcast updated bullets (and any hp changes)
+            await broadcast_state(transport, room_id)
 
         # wait until next tick
         await asyncio.sleep(interval)
@@ -298,21 +360,21 @@ async def ping_task(transport):
     while True:
         now = time.time()
         ping_msg = json.dumps({'action': 'ping'}).encode('utf-8')
-        # send ping to every player
-        for pid, info in list(game_state['players'].items()):
-            transport.sendto(ping_msg, info['address'])
+        for room_id, game_state in rooms.items():
+            # send ping to every player
+            for pid, info in list(game_state['players'].items()):
+                transport.sendto(ping_msg, info['address'])
 
-        # remove inactive players
-        cutoff = now - PONG_TIMEOUT
-        for pid, info in list(game_state['players'].items()):
-            if info['last_pong'] < cutoff:
-                # if in waiting room, remove from lobby
-                if pid in game_state['waiting_room']:
-                    game_state['waiting_room'].remove(pid)
-                # delete player data
-                del game_state['players'][pid]
-                print_state(f"Player '{pid}' disconnected due to timeout")
-
+            # remove inactive players
+            cutoff = now - PONG_TIMEOUT
+            for pid, info in list(game_state['players'].items()):
+                if info['last_pong'] < cutoff:
+                    # if in waiting room, remove from lobby
+                    if pid in game_state['waiting_room']:
+                        game_state['waiting_room'].remove(pid)
+                    # delete player data
+                    del game_state['players'][pid]
+                    print_state(f"Player '{pid}' disconnected due to timeout")
         await asyncio.sleep(PING_INTERVAL)
 
 

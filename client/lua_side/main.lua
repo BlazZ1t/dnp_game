@@ -5,6 +5,7 @@ local os = require "os"
 math.randomseed(os.time())
 
 local game_state = {
+    name = '',
     waiting_room = {},
     players = {},
     bullets = {},
@@ -47,13 +48,6 @@ local resources = {
     tank_right_4 = love.graphics.newImage("assets/4_tanks/tank_right.png"),
 }
 
--- local skin = {
---     tank_up = resources.tank_up_3,
---     tank_down = resources.tank_down_3,
---     tank_left = resources.tank_left_3,
---     tank_right = resources.tank_right_3
--- }
-
 local network = {
     udp = socket.udp(),
     server_ip = "127.0.0.1",
@@ -74,6 +68,7 @@ local network = {
 local lobby = {
 
     show_lobby = true,
+    choosing_room = true,
     ready = false,
     buttons = {
         ready = {
@@ -92,6 +87,14 @@ local lobby = {
             state = "normal",
             text = "Start"
         },
+        back = {
+            x = 500,
+            y = 20,
+            w = 250,
+            h = 50,
+            state = "normal",
+            text = "Back to rooms"
+        },
         revive = {
             x = 300,
             y = 400,
@@ -99,7 +102,12 @@ local lobby = {
             h = 50,
             state = "normal",
             text = "Revive"
-        }
+        },
+    },
+    room_buttons = {
+        room_1 = {},
+        room_2 = {},
+        room_3 = {}
     }
 }
 
@@ -147,12 +155,15 @@ function getSkin(skin_id)
     return skin
 end
 
-function connectToServer()
-    network.udp:settimeout(0)
-    network.udp:setpeername(network.server_ip, network.server_port)
+function connectToServer(room_id)
+    if game_state.name == "" then
+        network.udp:settimeout(0)
+        network.udp:setpeername(network.server_ip, network.server_port)
+    end
     sendNetworkMessage({
         action = "join_room",
-        player_id = network.player_id
+        player_id = network.player_id,
+        room_name = room_id
     })
 end
 
@@ -172,48 +183,50 @@ function love.load()
     resources.game_music:setLooping(true)
     currentMusic = resources.lobby_music
     currentMusic:play()
-    connectToServer()
 end
 
 function love.update(dt)
     -- Love is buggy!!!! This dt thing is not reliable
 
-    if network.player_speed.vx ~= 0 or network.player_speed.vy ~= 0  and network.is_alive then
-        local new_position = network.player_position
-        new_position.x = network.player_position.x + (network.player_speed.vx * dt)
-        new_position.y = network.player_position.y + (network.player_speed.vy * dt)
-        network.player_position = new_position
-    end
-
-
-    -- this is spam, but lets think it is OK :)
-    if lobby.show_lobby == false and network.player_position ~= game_state.players[network.player_id].player_position then
-        sendNetworkMessage({
-            action = "move",
-            player_id = network.player_id,
-            position = network.player_position,
-            direction = network.player_direction
-        })
-    end
+    if not lobby.choosing_room or game_state.name ~= "" then
+        if network.player_speed.vx ~= 0 or network.player_speed.vy ~= 0  and network.is_alive then
+            local new_position = network.player_position
+            new_position.x = network.player_position.x + (network.player_speed.vx * dt)
+            new_position.y = network.player_position.y + (network.player_speed.vy * dt)
+            network.player_position = new_position
+        end
     
-    -- Network receiving
-    while true do
-        local data, err = network.udp:receive()
-        if not data then
-            if err == 'timeout' then
-                break -- No more data to read
+    
+        -- this is spam, but lets think it is OK :)
+        if lobby.show_lobby == false and network.player_position ~= game_state.players[network.player_id].player_position then
+            sendNetworkMessage({
+                action = "move",
+                player_id = network.player_id,
+                position = network.player_position,
+                direction = network.player_direction
+            })
+        end
+        
+        -- Network receiving
+        while true do
+            local data, err = network.udp:receive()
+            if not data then
+                if err == 'timeout' then
+                    break -- No more data to read
+                else
+                    print("Network error:", err)
+                    break
+                end
+            end
+            local success, msg = pcall(json.decode, data)
+            if success then
+                handleNetworkMessage(msg)
             else
-                print("Network error:", err)
-                break
+                print("JSON decode error:", msg)
             end
         end
-        local success, msg = pcall(json.decode, data)
-        if success then
-            handleNetworkMessage(msg)
-        else
-            print("JSON decode error:", msg)
-        end
     end
+
 end
 
 function handleNetworkMessage(msg)
@@ -223,6 +236,7 @@ function handleNetworkMessage(msg)
         -- Check if we are in players, but the waiting_room is empty - this means game started
         if game_state.game_started then
             lobby.show_lobby = false
+            lobby.choosing_room = false
             if currentMusic ~= resources.game_music then
                 love.window.setTitle('Tetanki - FIGHT!')
                 network.player_skin = game_state.players[network.player_id].skin
@@ -254,10 +268,14 @@ function handleNetworkMessage(msg)
 end
 
 function love.draw()
-    if lobby.show_lobby then
-        drawLobby()
+    if lobby.choosing_room then
+        drawRoomChoice()
     else
-        drawGame()
+        if lobby.show_lobby then
+            drawLobby()
+        else
+            drawGame()
+        end
     end
 end
 
@@ -438,13 +456,42 @@ function drawButton(button)
     love.graphics.printf(button.text, button.x, button.y + button.h / 3, button.w, "center")
 end
 
+
+function drawRoomChoice()
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("Choose room - Player ID: " .. network.player_id, 20, 20)
+
+    y = 60
+    love.graphics.print("Available rooms:", 20, y)
+    y = y + 30
+    for i=1, 3 do
+        local room_button = {
+            x = 40,
+            y = y,
+            w = 200,
+            h = 50,
+            state = "normal",
+            text = string.format("room_%d", i)
+        }
+        drawButton(room_button)
+        if i == 1 then
+            lobby.room_buttons.room_1 = room_button
+        elseif i == 2 then
+            lobby.room_buttons.room_2 = room_button
+        else
+            lobby.room_buttons.room_3 = room_button
+        end
+        y = y + 60
+    end
+end
+
 function drawLobby()
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("Lobby - Player ID: " .. network.player_id, 20, 20)
 
     -- Draw players list
     local y = 60
-    love.graphics.print("Players in room:", 20, y)
+    love.graphics.print(string.format("Players in %s:", game_state.name), 20, y)
     y = y + 30
 
     for player_id, player in pairs(game_state.players) do
@@ -458,8 +505,8 @@ function drawLobby()
         love.graphics.print(string.format("%s - %s", player_id, status), 40, y)
         y = y + 25
     end
-
     -- Draw buttons
+    drawButton(lobby.buttons.back)
     if not lobby.ready then
         drawButton(lobby.buttons.ready)
     end
@@ -469,7 +516,7 @@ function drawLobby()
 end
 
 function love.mousemoved(x, y)
-    if lobby.show_lobby then
+    if lobby.show_lobby and not lobby.choosing_room then
         for _, btn in pairs(lobby.buttons) do
             if isPointInRect(x, y, btn) then
                 btn.state = "hover"
@@ -482,24 +529,41 @@ end
 
 function love.mousepressed(x, y, button)
     if lobby.show_lobby and button == 1 then
+        if lobby.choosing_room then
+            for button_num, button in pairs(lobby.room_buttons) do
+                if isPointInRect(x, y, button) then
+                    button.state = "pressed"
+                    resources.click_sound:play()
+                    if game_state.name ~= button_num then
+                        connectToServer(button_num)
+                    end
+                    lobby.choosing_room = false
+                    lobby.ready = false
+                    break
+                end
+            end
         -- Ready button
-        if isPointInRect(x, y, lobby.buttons.ready) then
-            lobby.buttons.ready.state = "pressed"
-            resources.click_sound:play()
-            sendNetworkMessage({
-                action = "set_ready",
-                player_id = network.player_id
-            })
-            lobby.ready = not lobby.ready
+        else
+            if isPointInRect(x, y, lobby.buttons.ready) then
+                lobby.buttons.ready.state = "pressed"
+                resources.click_sound:play()
+                sendNetworkMessage({
+                    action = "set_ready",
+                    player_id = network.player_id
+                })
+                lobby.ready = not lobby.ready
 
-            -- Start button
-        elseif allPlayersReady() and isPointInRect(x, y, lobby.buttons.start) then
-            lobby.buttons.start.state = "pressed"
-            resources.click_sound:play()
-            sendNetworkMessage({
-                action = "start_game",
-                player_id = network.player_id
-            })
+                -- Start button
+            elseif isPointInRect(x, y, lobby.buttons.back) then
+                lobby.choosing_room = true
+            elseif allPlayersReady() and isPointInRect(x, y, lobby.buttons.start) then
+                lobby.buttons.start.state = "pressed"
+                resources.click_sound:play()
+                sendNetworkMessage({
+                    action = "start_game",
+                    player_id = network.player_id
+                })
+            end
         end
     elseif not network.is_alive then
         if isPointInRect(x, y, lobby.buttons.revive) then

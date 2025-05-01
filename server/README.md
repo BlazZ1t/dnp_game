@@ -73,7 +73,8 @@ This UDP-based game server maintains a shared **game state** and broadcasts upda
 ```json
 {
   "action": "join_room",
-  "player_id": "alice"
+  "player_id": "alice",
+  "room_name": "room_1"
 }
 ```
 
